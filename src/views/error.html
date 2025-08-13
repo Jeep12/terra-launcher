@@ -1,0 +1,38 @@
+<!-- src/error.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Error</title>
+  <style>
+    body {
+      background: #252525;
+      color: #fff;
+      font-family: sans-serif;
+      padding: 20px;
+      text-align: center;
+      border: none;
+    }
+    .modal {
+      border-radius: 10px;
+      width: 100%;
+    }
+    button {
+      background: #ff5555;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      margin-top: 20px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="modal">
+    <h2>⚠️ Error</h2>
+    <p>No se encontró <b>L2.exe</b> en la carpeta seleccionada.<br>Seleccioná la raíz del cliente.</p>
+    <button onclick="window.close()">Cerrar</button>
+  </div>
+</body>
+</html>

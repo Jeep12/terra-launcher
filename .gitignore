@@ -40,23 +40,9 @@ Thumbs.db
 *.backup
 *.old
 
-# Archivos específicos del proyecto
-renderer.bundle.js
-styles.css
-preload.js
 
-views/
 
-# Fuentes y recursos
-*.ttf
-*.woff
-*.woff2
-*.png
-*.webp
-*.jpg
-*.jpeg
-*.gif
-*.ico
+
 
 # Archivos de configuración de entorno
 environments/
