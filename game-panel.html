@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.gstatic.com; connect-src 'self' http://localhost:8080 https://patch.l2terra.online https://api.l2terra.online https://l2terra.online;">
+  <script src="./main.bundle.js"></script>
+  <script>
+    // Verificar que window.electron esté disponible
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!window.electron) {
+        console.error('❌ window.electron NO disponible en game-panel');
+      }
+    });
+  </script>
+  <title>L2 Terra Game Panel</title>
+
+  <!-- FontAwesome -->
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css" rel="stylesheet">
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="assets/styles/fonts.css">
+  <link rel="stylesheet" href="assets/styles/game-panel.css">
+  <link rel="stylesheet" href="styles.css">
+
+</head>
+
+<body>
+  <!-- Header minimalista -->
+  <header class="launcher-header">
+    <div class="header-left">
+      <div class="logo-container">
+        <img src="assets/images/logos/Tlogo-terra.webp" alt="L2 Terra" class="header-logo" width="50px">
+        <span class="version-text">v 1.1.8</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <button class="window-btn debug-btn" id="debugBtn" title="Herramientas de Desarrollador (F12)">
+        <i class="fa-solid fa-bug"></i>
+      </button>
+      <button class="window-btn minimize-btn" id="minimizeBtn" title="Minimizar">
+        <span>−</span>
+      </button>
+      <button class="window-btn maximize-btn" id="maximizeBtn" title="Maximizar">
+        <span>□</span>
+      </button>
+      <button class="window-btn close-btn" id="closeBtn" title="Cerrar">
+        <span>×</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Contenido principal -->
+  <main class="launcher-main">
+    <!-- Panel izquierdo - Controles -->
+    <div class="controls-panel">
+      <div class="controls-content">
+        <div class="controls-header">
+          <img src="assets/images/logos/lineage2Terra_blanco.webp" alt="L2 Terra" class="controls-logo">
+        </div>
+        <!-- Folder Section -->
+        <div class="folder-section">
+          <div class="folder-display-container">
+            <div class="folder-display" id="folderPath" title="Selected folder: No folder selected">
+              Selected folder: No folder selected
+            </div>
+            <button id="btnSelectFolder" class="folder-icon-btn" title="Select Folder">
+              <i class="fa-solid fa-folder"></i>
+            </button>
+          </div>
+
+          <!-- Progress Bar -->
+          <div class="progress-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressFill"></div>
+              <div class="progress-text">
+                <span class="progress-percent" id="progressPercent">0%</span>
+                <span class="progress-status" id="progressStatus">Ready</span>
+              </div>
+            </div>
+
+            <!-- Progress Details -->
+            <div class="progress-details" id="progressDetails">
+              <div class="progress-info">
+                <span class="progress-time" id="progressTime">Time: --</span>
+                <span class="progress-speed" id="progressSpeed">Speed: --</span>
+              </div>
+              <div class="progress-file">
+                <span class="current-file" id="currentFile">File: --</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button id="btnUpdate" class="action-btn update-btn"><i class="fa-solid fa-arrows-rotate"></i> Check for
+            Updates</button>
+          <button id="btnRepair" class="action-btn repair-btn"><i class="fa-solid fa-screwdriver-wrench"></i>
+            Repair</button>
+          <button id="btnPlay" class="action-btn play-btn"><i class="fa-regular fa-circle-play"></i> Play</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel derecho - Área principal -->
+    <div class="game-panel">
+      <!-- Hero Section -->
+      <div class="hero-section">
+        <div class="hero-background"></div>
+        <div class="hero-content">
+          <div class="hero-badge">
+            <i class="fa-solid fa-crown"></i>
+            <span>LATEST UPDATE</span>
+          </div>
+
+          <span style="float: right;display: flex;flex-direction: column;color: greenyellow; gap: 8px;">
+            <span class="stat-item" title="Total Players"
+              style="display: flex; align-items: center; gap: 6px; cursor: help;">
+              <i class="fa-solid fa-users" style="font-size: 16px;"></i>
+              <span class="stat-value">-</span>
+            </span>
+            <span class="stat-item" title="Total Online"
+              style="display: flex; align-items: center; gap: 6px; cursor: help;">
+              <i class="fa-solid fa-circle" style="font-size: 14px; color: #00ff00;"></i>
+              <span class="stat-value">-</span>
+            </span>
+          </span>
+          <h1 class="hero-title"> Wrath of Gaia </h1>
+          <p class="hero-subtitle">The wrath of the earth awakens, and with it, war.</p>
+          <p></p>
+        </div>
+
+      </div>
+      <button class="go-to-website external-link" data-url="https://l2terra.online">
+        <i class="fa-solid fa-house"></i>
+        <span>Go to Website</span>
+      </button>
+      <!-- Content Area -->
+      <div class="content-area">
+        <!-- Navigation Tabs -->
+        <div class="content-navigation">
+
+          <button class="nav-tab active" data-tab="patch-notes">
+            <i class="fa-solid fa-scroll"></i>
+            <span>Patch Notes</span>
+          </button>
+          <button class="nav-tab" data-tab="rankings">
+            <i class="fa-solid fa-trophy"></i>
+            <span>Rankings</span>
+          </button>
+        </div>
+
+        <!-- Patch Notes Section -->
+        <div class="content-section active" id="patch-notes-section">
+          <div class="patch-notes-header">
+            <i class="fa-solid fa-scroll"></i>
+            <h3>Latest Patch Notes</h3>
+          </div>
+
+                     <div class="patch-notes">
+             <div class="patch-note-card" style="text-align: center; color: #8a8a8a;">
+               <div class="patch-note-header">
+                 <h4><i class="fa-solid fa-spinner fa-spin"></i> Loading Patch Notes...</h4>
+               </div>
+               <p>Please wait while we load the latest updates.</p>
+             </div>
+           </div>
+        </div>
+
+        <!-- Rankings Section -->
+        <div class="content-section" id="rankings-section">
+          <div class="rankings-header">
+            <i class="fa-solid fa-trophy"></i>
+            <h3>Server Rankings</h3>
+          </div>
+
+          <div class="rankings-container">
+            <div class="ranking-card">
+              <div class="ranking-title">
+                <i class="fa-solid fa-skull"></i>
+                <h4>Top PK</h4>
+              </div>
+              <div class="ranking-table" id="topPKTable">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Player</th>
+                      <th>Kills</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td>Loading...</td>
+                      <td>-</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="ranking-card">
+              <div class="ranking-title">
+                <i class="fa-solid fa-crosshairs"></i>
+                <h4>Top PvP</h4>
+              </div>
+              <div class="ranking-table" id="topPvPTable">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Player</th>
+                      <th>Kills</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td>Loading...</td>
+                      <td>-</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Clans Section -->
+          <div class="clans-container">
+            <div class="ranking-card clans-card">
+              <div class="ranking-title">
+                <i class="fa-solid fa-crown"></i>
+                <h4>Top Clans</h4>
+              </div>
+              <div class="ranking-table" id="topClansTable">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rank</th>
+                      <th>Clan</th>
+                      <th>Castle</th>
+                      <th>Reputation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>1</td>
+                      <td>Loading...</td>
+                      <td>-</td>
+                      <td>-</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">
+    <div class="toast-content">
+      <span class="toast-message"></span>
+    </div>
+  </div>
+
+
+
+  <script>
+    // Script para controles de ventana
+    document.addEventListener('DOMContentLoaded', () => {
+      const minimizeBtn = document.getElementById('minimizeBtn');
+      const maximizeBtn = document.getElementById('maximizeBtn');
+      const closeBtn = document.getElementById('closeBtn');
+      const debugBtn = document.getElementById('debugBtn');
+      const selectFolderBtn = document.getElementById('btnSelectFolder');
+
+      // Configurar navegación de tabs
+      setupTabNavigation();
+
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', () => {
+          if (window.electron && window.electron.minimizeWindow) {
+            window.electron.minimizeWindow();
+          }
+        });
+      }
+
+      if (maximizeBtn) {
+        maximizeBtn.addEventListener('click', () => {
+          if (window.electron && window.electron.maximizeWindow) {
+            window.electron.maximizeWindow();
+          }
+        });
+      }
+
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+          if (window.electron && window.electron.closeWindow) {
+            window.electron.closeWindow();
+          }
+        });
+      }
+
+      if (debugBtn) {
+        debugBtn.addEventListener('click', () => {
+          if (window.electron && window.electron.toggleDevTools) {
+            window.electron.toggleDevTools();
+          } else {
+            console.error('❌ toggleDevTools no disponible');
+          }
+        });
+      }
+
+      if (selectFolderBtn) {
+        selectFolderBtn.addEventListener('click', () => {
+          if (window.electron && window.electron.openFolderDialog) {
+            window.electron.openFolderDialog();
+          } else {
+            console.error('❌ openFolderDialog no disponible');
+          }
+        });
+      }
+    });
+
+
+
+    // Función para manejar la navegación entre tabs
+    function setupTabNavigation() {
+      const tabs = document.querySelectorAll('.nav-tab');
+      const sections = document.querySelectorAll('.content-section');
+
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const targetTab = tab.getAttribute('data-tab');
+
+          // Remover clase active de todos los tabs y sections
+          tabs.forEach(t => t.classList.remove('active'));
+          sections.forEach(s => s.classList.remove('active'));
+
+          // Agregar clase active al tab clickeado y su sección correspondiente
+          tab.classList.add('active');
+          const targetSection = document.getElementById(`${targetTab}-section`);
+          if (targetSection) {
+            targetSection.classList.add('active');
+          }
+        });
+      });
+    }
+
+    // Función para abrir enlaces externos
+    function openExternalLink(url) {
+      if (window.electron && window.electron.openExternal) {
+        window.electron.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    }
+
+    // Función para configurar enlaces externos
+    function setupExternalLinks() {
+      const externalLinks = document.querySelectorAll('.external-link');
+
+      externalLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const url = link.getAttribute('data-url');
+          if (url) {
+            openExternalLink(url);
+          }
+        });
+      });
+    }
+
+    // Configurar enlaces externos al cargar la página
+    document.addEventListener('DOMContentLoaded', () => {
+      setupExternalLinks();
+      setupTabNavigation();
+    });
+  </script>
+</body>
+
+</html>

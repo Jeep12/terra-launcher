@@ -1,0 +1,63 @@
+/* Bootstrap y FontAwesome se cargan desde CDN en producción */
+/* Los estilos personalizados están en style.css */
+
+/* Importar estilos personalizados */
+@import url('../assets/styles/fonts.css');
+@import url('../assets/styles/style.css');
+
+/* Estilos para tooltips personalizados */
+.stat-item {
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+  transform: scale(1.05);
+}
+
+/* Tooltip personalizado */
+.stat-item[title] {
+  position: relative;
+}
+
+.stat-item[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  animation: fadeIn 0.3s ease;
+  pointer-events: none;
+}
+
+.stat-item[title]:hover::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(0, 0, 0, 0.9);
+  margin-bottom: -5px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+} 

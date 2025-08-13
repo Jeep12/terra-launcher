@@ -1,0 +1,80 @@
+# Dependencias
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Directorios de build y distribución
+build/
+dist/
+temp/
+out/
+
+# Archivos de configuración local
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Archivos de desarrollo
+*.map
+*.log
+.DS_Store
+Thumbs.db
+
+# Directorios de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Archivos temporales
+*.tmp
+*.temp
+.cache/
+
+# Archivos de respaldo
+*.bak
+*.backup
+*.old
+
+# Archivos específicos del proyecto
+renderer.bundle.js
+styles.css
+preload.js
+assets/
+views/
+
+# Fuentes y recursos
+*.ttf
+*.woff
+*.woff2
+*.png
+*.webp
+*.jpg
+*.jpeg
+*.gif
+*.ico
+
+# Archivos de configuración de entorno
+environments/
+
+# Archivos de instalador
+*.exe
+*.msi
+*.dmg
+*.deb
+*.rpm
+
+# Archivos de Electron
+app/
+release/
+
+# Archivos de testing
+coverage/
+.nyc_output/
+
+# Archivos de documentación generada
+docs/

@@ -1,0 +1,89 @@
+{
+  "name": "Launcher-L2-Terra",
+  "version": "1.0.0",
+  "main": "main.js",
+  "scripts": {
+    "start": "npm run build:dev && cd build && electron .",
+    "build": "webpack --config webpack.config.dev.js",
+    "build:dev": "webpack --config webpack.config.dev.js",
+    "build:prod": "webpack --config webpack.config.prod.js",
+    "watch": "webpack --watch --config webpack.config.dev.js",
+    "dist": "npm run build:prod && cd build && electron-builder",
+    "dist:dev": "npm run build:prod && cd build && electron . --dev-tools",
+    "devtools": "node scripts/run-with-devtools.js",
+    "dist:inno": "npm run build:prod && iscc installer.iss",
+    "dist:packager": "npm run build:prod && electron-packager build Launcher-Terra --platform=win32 --arch=x64 --out=../ --overwrite",
+    "dist:packager-nsis": "npm run dist:packager && makensis ../custom-installer.nsi",
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "echo \"No linting configured\" && exit 0",
+    "clean": "rimraf build dist temp renderer.bundle.js styles.css assets views preload.js || echo 'Algunos archivos no pudieron ser eliminados (puede estar en uso)'",
+    "clean:dev": "rimraf *.ttf *.woff *.woff2 *.png *.webp *.map",
+    "clean:all": "npm run clean && npm run clean:dev",
+    "cleanup:processes": "node scripts/cleanup.js"
+  },
+  "keywords": [
+    "l2",
+    "lineage2",
+    "game",
+    "launcher",
+    "terra"
+  ],
+  "author": "L2 Terra Team",
+  "license": "ISC",
+  "description": "Game launcher for Lineage 2 Terra",
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "babel-loader": "^10.0.0",
+    "copy-webpack-plugin": "^13.0.0",
+    "cross-env": "^7.0.3",
+    "css-loader": "^7.1.2",
+    "electron": "^28.3.3",
+    "electron-builder": "^26.0.12",
+    "electron-packager": "^17.1.2",
+    "electron-reload": "^2.0.0-alpha.1",
+    "electron-reloader": "^1.2.3",
+    "mini-css-extract-plugin": "^2.9.2",
+    "path-browserify": "^1.0.1",
+    "rimraf": "^5.0.5",
+    "style-loader": "^4.0.0",
+    "webpack": "^5.100.2",
+    "webpack-cli": "^5.1.4",
+    "webpack-node-externals": "^3.0.0",
+    "webpack-obfuscator": "^3.5.1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.7.2",
+    "bootstrap": "^5.3.5",
+    "buffer": "^6.0.3",
+    "core-util-is": "^1.0.3",
+    "crypto-browserify": "^3.12.1",
+    "https-browserify": "^1.0.0",
+    "jquery": "^3.7.1",
+    "jsonwebtoken": "^9.0.2",
+    "popper.js": "^1.16.1",
+    "process": "^0.11.10",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
+    "url": "^0.11.4",
+    "util": "^0.12.5",
+    "vm-browserify": "^1.1.2"
+  },
+  "build": {
+    "appId": "com.l2terra.launcher",
+    "productName": "Launcher Terra",
+    "icon": "src/assets/images/icons/terra_icon.ico",
+    "publisher": "L2 Terra Team",
+    "win": {
+      "target": "nsis",
+      "requestedExecutionLevel": "requireAdministrator"
+    },
+    "files": [
+      "**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "app": "build"
+    }
+  }
+}
