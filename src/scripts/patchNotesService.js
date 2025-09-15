@@ -85,9 +85,15 @@ class PatchNotesService {
     const container = document.querySelector('.patch-notes');
     if (!container) return;
 
+    // Guardar los patches originales para ordenamiento
+    this.originalPatches = patches;
+    
+    // Aplicar ordenamiento actual
+    const sortedPatches = this.sortPatches(patches);
+    
     container.innerHTML = '';
     
-    patches.forEach(patch => {
+    sortedPatches.forEach(patch => {
       const patchCard = document.createElement('div');
       patchCard.className = 'patch-note-card';
       
@@ -110,6 +116,38 @@ class PatchNotesService {
       
       container.appendChild(patchCard);
     });
+  }
+
+  /**
+   * Ordena los patch notes según el criterio seleccionado
+   * @param {Array} patches - Array de patch notes
+   * @returns {Array} Array ordenado
+   */
+  sortPatches(patches) {
+    const sortSelect = document.getElementById('patchNotesSort');
+    const sortOrder = sortSelect ? sortSelect.value : 'newest';
+    
+    const sortedPatches = [...patches].sort((a, b) => {
+      const dateA = new Date(a.releaseDate);
+      const dateB = new Date(b.releaseDate);
+      
+      if (sortOrder === 'newest') {
+        return dateB - dateA; // Más reciente primero
+      } else {
+        return dateA - dateB; // Más antiguo primero
+      }
+    });
+    
+    return sortedPatches;
+  }
+
+  /**
+   * Aplica el ordenamiento actual a los patch notes mostrados
+   */
+  applyCurrentSorting() {
+    if (this.originalPatches) {
+      this.updatePatchNotesTable(this.originalPatches);
+    }
   }
 
   /**

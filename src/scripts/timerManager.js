@@ -92,6 +92,17 @@ class TimerManager {
     });
   }
 
+  // Actualizar solo la velocidad del temporizador
+  updateSpeed(operationId, speed) {
+    const timer = this.activeTimers.get(operationId);
+    if (!timer || !timer.isActive) return;
+
+    // Actualizar velocidad estimada
+    timer.estimatedSpeed = speed;
+    
+    logger.debug(`Speed updated for ${operationId}`, { speed: this.formatSpeed(speed) });
+  }
+
   // Calcular tiempo estimado
   calculateEstimatedTime(timer) {
     const elapsed = Date.now() - timer.startTime;

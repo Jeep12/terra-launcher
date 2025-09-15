@@ -68,12 +68,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Configurar botones del juego
     gameLauncher.setupDownloadButton();
     
+    // Inicializar estado del cooldown del botón Repair
+    gameLauncher.initializeRepairCooldown();
+    
     // Cargar datos iniciales
     logger.debug('Cargando datos iniciales...', null, 'Renderer');
     await gameLauncher.loadRankings();
     await gameLauncher.loadPatchNotes();
     await gameLauncher.loadPlayerStats();
     logger.debug('Datos iniciales cargados', null, 'Renderer');
+    
+    // Verificación automática de actualizaciones al abrir el launcher
+    logger.debug('Iniciando verificación automática de actualizaciones...', null, 'Renderer');
+    await gameLauncher.performAutoUpdateCheck();
+    logger.debug('Verificación automática completada', null, 'Renderer');
     
     // Configurar actualización automática
     setInterval(() => {

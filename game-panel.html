@@ -41,9 +41,9 @@
     </div>
 
     <div class="header-right">
-      <button class="window-btn debug-btn" id="debugBtn" title="Herramientas de Desarrollador (F12)">
+    <!--   <button class="window-btn debug-btn" id="debugBtn" title="Herramientas de Desarrollador (F12)">
         <i class="fa-solid fa-bug"></i>
-      </button>
+      </button>-->
       <button class="window-btn minimize-btn" id="minimizeBtn" title="Minimizar">
         <span>−</span>
       </button>
@@ -166,9 +166,15 @@
           <div class="patch-notes-header">
             <i class="fa-solid fa-scroll"></i>
             <h3>Latest Patch Notes</h3>
+            <div class="patch-notes-controls">
+              <select id="patchNotesSort" class="sort-select">
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </div>
           </div>
 
-                     <div class="patch-notes">
+          <div class="patch-notes">
              <div class="patch-note-card" style="text-align: center; color: #8a8a8a;">
                <div class="patch-note-header">
                  <h4><i class="fa-solid fa-spinner fa-spin"></i> Loading Patch Notes...</h4>

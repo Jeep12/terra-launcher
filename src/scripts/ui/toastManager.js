@@ -25,29 +25,32 @@ class ToastManager {
 
   showToast(message, type = 'info', duration = 3000) {
     try {
-      // Limpiar toast anterior si existe
-      this.clearCurrentToast();
+      // Limpiar TODOS los toasts existentes de manera agresiva
+      this.clearAllToasts();
       
-      // Crear nuevo toast
-      const toast = this.createToastElement(message, type);
-      
-      // Agregar al DOM
-      document.body.appendChild(toast);
-      
-      // Animar entrada
+      // Esperar un frame para asegurar que la limpieza se complete
       requestAnimationFrame(() => {
-        toast.classList.add('show');
+        // Crear nuevo toast
+        const toast = this.createToastElement(message, type);
+        
+        // Agregar al DOM
+        document.body.appendChild(toast);
+        
+        // Animar entrada
+        requestAnimationFrame(() => {
+          toast.classList.add('show');
+        });
+        
+        // Guardar referencia
+        this.currentToast = toast;
+        
+        // Configurar timer para ocultar (solo si no es un error)
+        if (type !== 'error') {
+          this.currentTimer = setTimeout(() => {
+            this.hideCurrentToast();
+          }, duration);
+        }
       });
-      
-      // Guardar referencia
-      this.currentToast = toast;
-      
-      // Configurar timer para ocultar (solo si no es un error)
-      if (type !== 'error') {
-        this.currentTimer = setTimeout(() => {
-          this.hideCurrentToast();
-        }, duration);
-      }
       
     } catch (error) {
       logger.error('Error showing toast', { error: error.message, message, type }, 'ToastManager');
@@ -88,6 +91,12 @@ class ToastManager {
   }
 
   hideCurrentToast() {
+    // Limpiar timer primero
+    if (this.currentTimer) {
+      clearTimeout(this.currentTimer);
+      this.currentTimer = null;
+    }
+    
     if (this.currentToast) {
       // Animar salida
       this.currentToast.classList.remove('show');
@@ -100,16 +109,19 @@ class ToastManager {
         this.currentToast = null;
       }, 300);
     }
-    
-    // Limpiar timer
-    if (this.currentTimer) {
-      clearTimeout(this.currentTimer);
-      this.currentTimer = null;
-    }
   }
 
   clearCurrentToast() {
+    // Limpiar toast actual
     this.hideCurrentToast();
+    
+    // Limpiar TODOS los toasts existentes en el DOM (por si hay toasts huérfanos)
+    const existingToasts = document.querySelectorAll('.toast');
+    existingToasts.forEach(toast => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    });
   }
 
   // Métodos de conveniencia para tipos específicos
@@ -128,6 +140,28 @@ class ToastManager {
 
   showInfo(message, duration = 3000) {
     this.showToast(message, 'info', duration);
+  }
+
+  // Método para limpiar todos los toasts de manera agresiva
+  clearAllToasts() {
+    // Limpiar timer actual
+    if (this.currentTimer) {
+      clearTimeout(this.currentTimer);
+      this.currentTimer = null;
+    }
+    
+    // Limpiar referencia actual
+    this.currentToast = null;
+    
+    // Remover TODOS los toasts del DOM inmediatamente
+    const allToasts = document.querySelectorAll('.toast');
+    allToasts.forEach(toast => {
+      if (toast.parentNode) {
+        toast.parentNode.removeChild(toast);
+      }
+    });
+    
+    logger.debug('All toasts cleared', null, 'ToastManager');
   }
 
   // Método de prueba para verificar que el sistema funciona

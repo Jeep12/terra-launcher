@@ -38,7 +38,8 @@ body {
   z-index: 1000;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
   -webkit-app-region: drag;
-  cursor: move;
+  cursor: move; 
+
 }
 
 .header-left {
@@ -355,6 +356,69 @@ body {
   box-shadow: 0 6px 20px rgba(239, 68, 68, 0.2);
 }
 
+/* Repair button cooldown styles */
+.repair-btn.repair-cooldown {
+  position: relative;
+  background: rgba(239, 68, 68, 0.3) !important;
+  border-color: #ef4444 !important;
+  color: #94a3b8 !important;
+  cursor: not-allowed !important;
+  overflow: hidden;
+  /* Asegurar que el hover funcione en toda el área del botón */
+  pointer-events: auto;
+}
+
+.repair-btn.repair-cooldown:hover {
+  transform: none !important;
+  box-shadow: none !important;
+  background: rgba(239, 68, 68, 0.3) !important;
+}
+
+.repair-cooldown-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #ef4444, #f97316, #ef4444);
+  transition: width 0.5s ease;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);
+  animation: repair-progress-pulse 1.5s infinite;
+  /* Asegurar que no interfiera con el hover del botón */
+  pointer-events: none;
+}
+
+.repair-cooldown-progress::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: repair-cooldown-shine 2s infinite linear;
+  /* Asegurar que no interfiera con el hover del botón */
+  pointer-events: none;
+}
+
+@keyframes repair-cooldown-shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes repair-progress-pulse {
+  0%, 100% {
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 1);
+  }
+}
+
 .play-btn {
   background: linear-gradient(135deg, #f59e0b, #d97706);
   border-color: #f59e0b;
@@ -580,10 +644,48 @@ body {
 .patch-notes-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   margin-bottom: 25px;
   padding-bottom: 15px;
   border-bottom: 2px solid rgba(245, 158, 11, 0.2);
+}
+
+.patch-notes-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sort-select {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  color: #cbd5e1;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  backdrop-filter: blur(10px);
+  min-width: 140px;
+}
+
+.sort-select:hover {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.sort-select option {
+  background: rgba(30, 41, 59, 0.95);
+  color: #cbd5e1;
+  padding: 8px;
 }
 
 .patch-notes-header i {

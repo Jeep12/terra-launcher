@@ -23,6 +23,12 @@ class GameLauncher {
     this.isClientReady = false;
     this.isUpdating = false; // Nuevo estado para check for updates
     this.currentOperation = null; // Operación actual en curso
+    this.hasUpdatesAvailable = false; // Nuevo estado para rastrear actualizaciones pendientes
+    this.lastPlayClickTime = 0; // Para prevenir spam de clics en el botón Play
+    this.lastUpdateClickTime = 0; // Para prevenir spam de clics en el botón Update
+    this.lastRepairClickTime = 0; // Para prevenir spam de clics en el botón Repair
+    this.lastRepairExecutionTime = 0; // Para el cooldown de 5 minutos del botón Repair
+    this.repairCooldownDuration = 1 * 60 * 1000; // 5 minutos en milisegundos
     this.downloadStats = {
       totalFiles: 0,
       completedFiles: 0,
@@ -115,6 +121,91 @@ class GameLauncher {
       return false;
     }
     return true;
+  }
+
+  // Verificación automática de actualizaciones al abrir el launcher
+  async performAutoUpdateCheck() {
+    try {
+      logger.info('Starting automatic update check...');
+      
+      // Verificar si hay una carpeta seleccionada
+      const selectedFolder = localStorage.getItem('selectedFolder');
+      if (!selectedFolder) {
+        logger.info('No folder selected - skipping auto update check');
+        return;
+      }
+
+      // Obtener elementos de la UI para mostrar progreso
+      const progressFill = document.getElementById('progressFill');
+      const progressPercent = document.getElementById('progressPercent');
+      const progressStatus = document.getElementById('progressStatus');
+      const progressDetails = document.getElementById('progressDetails');
+      const btnUpdate = document.getElementById('btnUpdate');
+      const btnPlay = document.getElementById('btnPlay');
+
+      if (!progressFill || !progressPercent || !progressStatus) {
+        logger.warn('Progress bar elements not found - skipping auto update check');
+        return;
+      }
+
+      // Mostrar que está verificando actualizaciones
+      progressStatus.textContent = 'Checking for updates...';
+      progressFill.style.width = '10%';
+      progressPercent.textContent = '10%';
+      progressDetails.style.display = 'block';
+
+      // Actualizar la carpeta actual en el patchDownloader
+      this.patchDownloader.updateCurrentFolder(selectedFolder);
+
+      // Obtener archivos del servidor
+      const serverFiles = await this.patchDownloader.getAvailableFiles();
+      
+      // Obtener archivos locales
+      const localFiles = await this.patchDownloader.getLocalFiles(selectedFolder);
+      
+      // Comparar archivos para ver si hay actualizaciones
+      const filesToUpdate = await this.patchDownloader.getFilesToUpdate(serverFiles, localFiles);
+
+      if (filesToUpdate.length === 0) {
+        // No hay actualizaciones - mostrar que todo está actualizado
+        logger.info('All files are up to date');
+        this.hasUpdatesAvailable = false;
+        progressFill.style.width = '100%';
+        progressPercent.textContent = '100%';
+        progressStatus.textContent = 'All files are up to date ✓';
+        progressDetails.style.display = 'none';
+        
+        // Mostrar notificación de éxito
+        this.showSuccess('All files are up to date ✓');
+      } else {
+        // Hay actualizaciones disponibles
+        logger.info(`Found ${filesToUpdate.length} files that need updating`);
+        this.hasUpdatesAvailable = true;
+        progressFill.style.width = '0%';
+        progressPercent.textContent = '0%';
+        progressStatus.textContent = `${filesToUpdate.length} updates available - Click Update to install`;
+        progressDetails.style.display = 'none';
+        
+        // Mostrar notificación de actualizaciones disponibles
+        this.showInfo(`${filesToUpdate.length} updates available - Click Update to install`);
+      }
+
+    } catch (error) {
+      logger.error('Error during automatic update check', { error: error.message });
+      
+      // En caso de error, resetear la barra de progreso
+      const progressFill = document.getElementById('progressFill');
+      const progressPercent = document.getElementById('progressPercent');
+      const progressStatus = document.getElementById('progressStatus');
+      
+      if (progressFill && progressPercent && progressStatus) {
+        progressFill.style.width = '0%';
+        progressPercent.textContent = '0%';
+        progressStatus.textContent = 'Ready to update';
+      }
+      
+      this.showWarning('Update check failed - you can still check manually');
+    }
   }
 
 
@@ -417,6 +508,14 @@ class GameLauncher {
 
     // Configurar botón de actualización
     btnUpdate.addEventListener('click', async () => {
+      // Prevenir spam de clics (máximo 1 clic cada 3 segundos)
+      const currentTime = Date.now();
+      if (currentTime - this.lastUpdateClickTime < 3000) {
+        logger.debug('Update button click ignored - too frequent', { timeSinceLastClick: currentTime - this.lastUpdateClickTime });
+        return;
+      }
+      this.lastUpdateClickTime = currentTime;
+
       console.log('🔘 btnUpdate clicked!');
       
       if (this.isDownloading || this.isRepairing) {
@@ -438,6 +537,24 @@ class GameLauncher {
 
     // Configurar botón de reparación
     btnRepair.addEventListener('click', async () => {
+      // Prevenir spam de clics (máximo 1 clic cada 3 segundos)
+      const currentTime = Date.now();
+      if (currentTime - this.lastRepairClickTime < 3000) {
+        logger.debug('Repair button click ignored - too frequent', { timeSinceLastClick: currentTime - this.lastRepairClickTime });
+        return;
+      }
+      this.lastRepairClickTime = currentTime;
+
+      // Verificar cooldown de 5 minutos
+      const timeSinceLastRepair = currentTime - this.lastRepairExecutionTime;
+      if (timeSinceLastRepair < this.repairCooldownDuration) {
+        const remainingTime = Math.ceil((this.repairCooldownDuration - timeSinceLastRepair) / 1000);
+        const minutes = Math.floor(remainingTime / 60);
+        const seconds = remainingTime % 60;
+        this.showWarning(`Repair is on cooldown. Please wait ${minutes}m ${seconds}s before using repair again.`);
+        return;
+      }
+
       if (this.isDownloading || this.isRepairing) {
         console.warn('⚠️ Operation already in progress, ignoring click');
         return;
@@ -449,11 +566,23 @@ class GameLauncher {
         return;
       }
       
+      // Marcar tiempo de ejecución y guardar en localStorage
+      this.lastRepairExecutionTime = currentTime;
+      localStorage.setItem('lastRepairExecutionTime', currentTime.toString());
+      this.updateRepairButtonCooldown();
       await this.startRepair(progressFill, progressPercent, progressStatus, progressDetails, btnRepair);
     });
 
     // Configurar botón de juego
     btnPlay.addEventListener('click', async () => {
+      // Prevenir spam de clics (máximo 1 clic cada 2 segundos)
+      const currentTime = Date.now();
+      if (currentTime - this.lastPlayClickTime < 2000) {
+        logger.debug('Play button click ignored - too frequent', { timeSinceLastClick: currentTime - this.lastPlayClickTime });
+        return;
+      }
+      this.lastPlayClickTime = currentTime;
+
       if (!this.canExecuteOperation('play')) {
         return;
       }
@@ -462,6 +591,26 @@ class GameLauncher {
       if (!selectedFolder) {
         this.showWarning('Please select a folder first');
         return;
+      }
+
+      // Verificar si hay actualizaciones pendientes
+      if (this.hasUpdatesAvailable) {
+        this.showWarning('Please update your game first before playing. Click "Check for Updates" to install the latest version.');
+        return;
+      }
+
+      // Verificación rápida de actualizaciones antes de jugar
+      logger.info('Performing quick update check before launching game...');
+      try {
+        const quickCheckResult = await this.performQuickUpdateCheck();
+        if (quickCheckResult.hasUpdates) {
+          this.showWarning(`New updates available! ${quickCheckResult.updateCount} files need updating. Please update before playing.`);
+          return;
+        }
+        logger.info('Quick update check passed - no new updates found');
+      } catch (error) {
+        logger.warn('Quick update check failed, proceeding with game launch', { error: error.message });
+        // Si falla la verificación, continuar con el lanzamiento
       }
       
       // Validar estructura del cliente L2 antes de iniciar el juego
@@ -686,7 +835,7 @@ class GameLauncher {
         progressDetails.style.display = 'none';
         
         this.showSuccess('All files are up to date ✓');
-        
+        this.hasUpdatesAvailable = false; // Actualizar estado - no hay actualizaciones pendientes
 
         return;
       }
@@ -801,6 +950,7 @@ class GameLauncher {
 
           
           // this.showSuccess('Installation completed successfully ✓');
+        this.hasUpdatesAvailable = false; // Actualizar estado - actualizaciones completadas
         },
         (error) => {
           // Error en instalación
@@ -843,6 +993,7 @@ class GameLauncher {
 
       this.setOperationState('repair', true);
       btnRepair.disabled = true;
+      btnPlay.disabled = true;
 
       const selectedFolder = localStorage.getItem('selectedFolder');
       if (!selectedFolder) {
@@ -863,7 +1014,7 @@ class GameLauncher {
       // Actualizar la carpeta actual en el patchDownloader
       this.patchDownloader.updateCurrentFolder(selectedFolder);
 
-      // Inicializar temporizador inmediatamente
+      // Inicializar temporizador inmediatamente - igual que en update
       const timerId = `repair_${Date.now()}`;
       timerManager.startTimer(timerId, 'repair', 0, (timerInfo) => {
         // Actualizar información detallada en tiempo real
@@ -879,27 +1030,34 @@ class GameLauncher {
       repairService.setupRepair(
         selectedFolder, 
         (progressData) => {
-          console.log('🔧 Progresso de repair:', progressData);
+          // Callback de progreso de repair - igual que en update
+          console.log('🔧 Repair progress:', progressData);
+          
+          const progress = progressData.percent || progressData.progress || 0;
+          const currentFile = progressData.currentFile || progressData.file || 'Unknown';
+          const currentPhase = progressData.currentPhase || 'repair';
+          const speed = progressData.speed || 0;
+          const downloaded = progressData.downloaded || 0;
+          const elapsed = progressData.elapsed || 0;
           
           // Calcular progreso general (5% a 95%)
-          const repairProgress = 5 + (progressData.percent || 0) * 0.9; // 90% del progreso
-          progressFill.style.width = `${repairProgress}%`;
-          progressPercent.textContent = `${Math.round(repairProgress)}%`;
-          
-          // Actualizar status con información del archivo actual
-          const fileInfo = progressData.currentFile ? ` - ${progressData.currentFile}` : '';
-          const phaseInfo = progressData.currentPhase ? ` (${progressData.currentPhase})` : '';
-          progressStatus.textContent = `Repairing${fileInfo}${phaseInfo}... ${Math.round(repairProgress)}%`;
-          
-          // Actualizar información detallada
-          this.updateProgressDetails(timerId, repairProgress, 'repair', progressData.currentFile);
+          const repairProgress = Math.min(5 + progress * 0.9, 95);
           
           // Actualizar notificación del system tray
           this.updateTrayNotification('repair', repairProgress);
           
-          // Actualizar timer con información de velocidad
-          if (progressData.speed && progressData.downloaded) {
-            timerManager.updateProgress(timerId, progressData.downloaded, progressData.speed);
+          if (!isNaN(repairProgress)) {
+            progressFill.style.width = `${repairProgress}%`;
+            progressPercent.textContent = `${Math.round(repairProgress)}%`;
+            progressStatus.textContent = `Repairing ${currentFile}... ${Math.round(repairProgress)}%`;
+            
+            // Actualizar timer con información real - igual que en update
+            timerManager.updateProgress(timerId, repairProgress, 0, downloaded, speed);
+            
+            // Actualizar información detallada con velocidad y tiempo real - igual que en update
+            // Usar 'download' como tipo cuando hay velocidad para que se muestre correctamente
+            const displayType = speed > 0 ? 'download' : currentPhase;
+            this.updateProgressDetailsWithSpeed(timerId, repairProgress, displayType, currentFile, speed, elapsed);
           }
         }
       );
@@ -907,8 +1065,8 @@ class GameLauncher {
       // Ejecutar repair
       const result = await repairService.startRepair();
       
-      // Finalizar timer
-      timerManager.stopTimer(timerId);
+      // Finalizar timer - igual que en update
+      timerManager.completeTimer(timerId);
       
       if (result.success) {
         console.log('✅ Repair completado:', result.message);
@@ -918,8 +1076,15 @@ class GameLauncher {
         progressPercent.textContent = '100%';
         progressStatus.textContent = result.message;
         
-        // Actualizar información detallada con progreso 100%
+        // Actualizar información detallada con progreso 100% - igual que en update
         this.updateProgressDetails(timerId, 100, 'repair', 'Completed');
+        
+        // Ocultar detalles del progreso después de completar - igual que en update
+        if (progressDetails) {
+          setTimeout(() => {
+            progressDetails.style.display = 'none';
+          }, 2000);
+        }
         
         // Mostrar toast específico para repair
         if (result.repairedCount > 0) {
@@ -943,6 +1108,7 @@ class GameLauncher {
     } finally {
       this.setOperationState('repair', false);
       btnRepair.disabled = false;
+      btnPlay.disabled = false;
     }
   }
 
@@ -1003,11 +1169,184 @@ class GameLauncher {
       logger.debug('Iniciando loadPatchNotes()', null, 'GameLauncher');
       logger.info('Loading patch notes using patchNotesService');
       await this.patchNotesService.updatePatchNotes();
+      this.setupPatchNotesControls();
       logger.debug('loadPatchNotes() completado exitosamente', null, 'GameLauncher');
       logger.info('Patch notes loaded successfully');
     } catch (error) {
       logger.error('Error en loadPatchNotes()', { error: error.message }, 'GameLauncher');
       logger.error('Failed to load patch notes', { error: error.message });
+    }
+  }
+
+  /**
+   * Configura los controles de patch notes (ordenamiento)
+   */
+  setupPatchNotesControls() {
+    const sortSelect = document.getElementById('patchNotesSort');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', () => {
+        logger.debug('Patch notes sort order changed', { value: sortSelect.value });
+        this.patchNotesService.applyCurrentSorting();
+      });
+      logger.debug('Patch notes controls configured');
+    }
+  }
+
+  /**
+   * Actualiza el estado visual del botón Repair con animación de cooldown
+   */
+  updateRepairButtonCooldown() {
+    const btnRepair = document.getElementById('btnRepair');
+    if (!btnRepair) return;
+
+    const currentTime = Date.now();
+    const timeSinceLastRepair = currentTime - this.lastRepairExecutionTime;
+    
+    if (timeSinceLastRepair < this.repairCooldownDuration) {
+      // Calcular progreso del cooldown (0 a 1) - INVERTIDO: de vacío a lleno
+      const cooldownProgress = timeSinceLastRepair / this.repairCooldownDuration;
+      const remainingTime = Math.ceil((this.repairCooldownDuration - timeSinceLastRepair) / 1000);
+      const minutes = Math.floor(remainingTime / 60);
+      const seconds = remainingTime % 60;
+      
+      // Deshabilitar botón y agregar clase de cooldown
+      btnRepair.disabled = true;
+      btnRepair.classList.add('repair-cooldown');
+      
+      // Cambiar texto del botón a contador corto
+      const buttonText = btnRepair.querySelector('span');
+      if (buttonText) {
+        if (minutes > 0) {
+          buttonText.textContent = `${minutes}m`;
+        } else {
+          buttonText.textContent = `${seconds}s`;
+        }
+      }
+      
+      // Tooltip con información completa
+      btnRepair.title = `Repair in ${minutes}m ${seconds}s`;
+      
+      // Crear o actualizar barra de progreso de cooldown
+      this.updateCooldownProgressBar(btnRepair, cooldownProgress);
+      
+      // Programar próxima actualización
+      setTimeout(() => {
+        this.updateRepairButtonCooldown();
+      }, 1000);
+      
+    } else {
+      // Cooldown terminado
+      btnRepair.disabled = false;
+      btnRepair.classList.remove('repair-cooldown');
+      
+      // Restaurar texto original del botón
+      const buttonText = btnRepair.querySelector('span');
+      if (buttonText) {
+        buttonText.textContent = 'Repair';
+      }
+      
+      btnRepair.title = 'Repair game files';
+      
+      // Remover barra de progreso
+      this.removeCooldownProgressBar(btnRepair);
+    }
+  }
+
+  /**
+   * Actualiza la barra de progreso visual del cooldown
+   */
+  updateCooldownProgressBar(btnRepair, progress) {
+    let progressBar = btnRepair.querySelector('.repair-cooldown-progress');
+    
+    if (!progressBar) {
+      // Crear barra de progreso si no existe
+      progressBar = document.createElement('div');
+      progressBar.className = 'repair-cooldown-progress';
+      btnRepair.appendChild(progressBar);
+    }
+    
+    // Actualizar progreso (de vacío a lleno: 0% = cooldown completo, 100% = listo)
+    const progressPercent = Math.round(progress * 100);
+    progressBar.style.width = `${progressPercent}%`;
+    
+    // Forzar reflow para asegurar que la animación se ejecute
+    progressBar.offsetHeight;
+  }
+
+  /**
+   * Remueve la barra de progreso del cooldown
+   */
+  removeCooldownProgressBar(btnRepair) {
+    const progressBar = btnRepair.querySelector('.repair-cooldown-progress');
+    if (progressBar) {
+      progressBar.remove();
+    }
+  }
+
+  /**
+   * Inicializa el estado del cooldown del botón Repair al cargar la aplicación
+   */
+  initializeRepairCooldown() {
+    // Cargar tiempo de última ejecución desde localStorage
+    const savedRepairTime = localStorage.getItem('lastRepairExecutionTime');
+    if (savedRepairTime) {
+      this.lastRepairExecutionTime = parseInt(savedRepairTime);
+    }
+    
+    // Actualizar estado visual del botón
+    setTimeout(() => {
+      this.updateRepairButtonCooldown();
+    }, 100);
+    
+    logger.debug('Repair cooldown initialized', { 
+      lastExecutionTime: this.lastRepairExecutionTime,
+      hasCooldown: this.lastRepairExecutionTime > 0 
+    });
+  }
+
+
+
+
+  /**
+   * Verificación rápida de actualizaciones antes de jugar (sin UI)
+   * @returns {Promise<Object>} Resultado de la verificación
+   */
+  async performQuickUpdateCheck() {
+    try {
+      const selectedFolder = localStorage.getItem('selectedFolder');
+      if (!selectedFolder) {
+        return { hasUpdates: false, updateCount: 0 };
+      }
+
+      // Actualizar la carpeta actual en el patchDownloader
+      this.patchDownloader.updateCurrentFolder(selectedFolder);
+
+      // Obtener archivos del servidor (sin mostrar progreso)
+      const serverFiles = await this.patchDownloader.getAvailableFiles();
+      
+      // Obtener archivos locales
+      const localFiles = await this.patchDownloader.getLocalFiles(selectedFolder);
+      
+      // Comparar archivos para ver si hay actualizaciones
+      const filesToUpdate = await this.patchDownloader.getFilesToUpdate(serverFiles, localFiles);
+
+      const hasUpdates = filesToUpdate.length > 0;
+      logger.debug('Quick update check completed', { 
+        hasUpdates, 
+        updateCount: filesToUpdate.length,
+        totalServerFiles: serverFiles.length,
+        totalLocalFiles: localFiles.length
+      });
+
+      return {
+        hasUpdates,
+        updateCount: filesToUpdate.length,
+        filesToUpdate: hasUpdates ? filesToUpdate.map(f => f.name) : []
+      };
+
+    } catch (error) {
+      logger.error('Error during quick update check', { error: error.message });
+      throw error;
     }
   }
 
@@ -1045,22 +1384,17 @@ class GameLauncher {
     const currentFile = document.getElementById('currentFile');
     const progressDetails = document.getElementById('progressDetails');
     
-    console.log('🔧 updateProgressDetails llamado:', { timerId, progress, type, filename });
-    console.log('🔧 Elementos encontrados:', {
-      progressTime: !!progressTime,
-      progressSpeed: !!progressSpeed,
-      currentFile: !!currentFile,
-      progressDetails: !!progressDetails
-    });
+    // Mostrar detalles inmediatamente
+    if (progressDetails) {
+      progressDetails.style.display = 'block';
+    }
     
     if (!progressTime || !progressSpeed || !currentFile) {
-      console.log('⚠️ Elementos de progreso no encontrados');
       return;
     }
     
     const timer = timerManager.activeTimers.get(timerId);
     if (!timer) {
-      console.log('⚠️ Timer no encontrado:', timerId);
       return;
     }
     
@@ -1073,7 +1407,6 @@ class GameLauncher {
     const elapsed = Date.now() - timer.startTime;
     const elapsedTime = timerManager.formatTime(elapsed);
     progressTime.textContent = `⏱️ ${elapsedTime}`;
-    console.log('⏰ Tiempo actualizado:', elapsedTime);
     
     // Actualizar velocidad según el tipo de operación
     if (progress >= 100) {
@@ -1099,18 +1432,14 @@ class GameLauncher {
         progressSpeed.textContent = `⚡ ${speed}`;
       }
     }
-    console.log('🚀 Velocidad actualizada:', progressSpeed.textContent);
     
     // Actualizar archivo actual
     if (filename) {
       currentFile.textContent = `📁 ${filename}`;
-      console.log('📁 Archivo actualizado:', filename);
     } else if (this.downloadStats && this.downloadStats.currentFile) {
       currentFile.textContent = `📁 ${this.downloadStats.currentFile}`;
-      console.log('📁 Archivo actualizado (stats):', this.downloadStats.currentFile);
     } else if (timer.currentFile) {
       currentFile.textContent = `📁 ${timer.currentFile}`;
-      console.log('📁 Archivo actualizado (timer):', timer.currentFile);
     } else {
       currentFile.textContent = `📁 Procesando...`;
     }
@@ -1123,16 +1452,7 @@ class GameLauncher {
     const currentFile = document.getElementById('currentFile');
     const progressDetails = document.getElementById('progressDetails');
     
-    console.log('🔧 updateProgressDetailsWithSpeed llamado:', { timerId, progress, type, filename, speed, elapsed });
-    console.log('🔧 Elementos encontrados:', {
-      progressTime: !!progressTime,
-      progressSpeed: !!progressSpeed,
-      currentFile: !!currentFile,
-      progressDetails: !!progressDetails
-    });
-    
     if (!progressTime || !progressSpeed || !currentFile) {
-      console.log('⚠️ Elementos de progreso no encontrados');
       return;
     }
     
@@ -1144,7 +1464,6 @@ class GameLauncher {
     // Actualizar tiempo transcurrido
     const elapsedTime = timerManager.formatTime(elapsed);
     progressTime.textContent = `⏱️ ${elapsedTime}`;
-    console.log('⏰ Tiempo actualizado:', elapsedTime);
     
     // Actualizar velocidad según el tipo de operación
     if (progress >= 100) {
@@ -1156,7 +1475,6 @@ class GameLauncher {
         // Durante la descarga, mostrar velocidad real
         const formattedSpeed = timerManager.formatSpeed(speed);
         progressSpeed.textContent = `🚀 ${formattedSpeed}`;
-        console.log('🚀 Velocidad actualizada:', formattedSpeed);
       } else if (type === 'extraction' || type === 'install') {
         // Durante la extracción/instalación
         progressSpeed.textContent = `📦 Procesando...`;
