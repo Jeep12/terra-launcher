@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, Tray } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { spawn, exec } = require('child_process');
@@ -37,6 +37,8 @@ if (process.env.NODE_ENV !== 'production') {
 
 let mainWindow;
 let splash;
+let tray = null;
+let isMinimizedToTray = false;
 
 const isDev = !app.isPackaged;
 function resolveAssetPath(...segments) {
@@ -160,6 +162,17 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // Manejar cierre de ventana (cuando el usuario hace clic en X)
+  mainWindow.on('close', (event) => {
+    // Enviar evento al renderer para verificar si hay operaciones activas
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-close-request');
+    }
+    
+    // Prevenir cierre inmediato - el renderer decidirá si cerrar o minimizar
+    event.preventDefault();
+  });
+
   // Prevenir pantalla completa pero permitir maximizar
   mainWindow.on('enter-full-screen', () => {
     mainWindow.setFullScreen(false);
@@ -190,11 +203,8 @@ function createWindow() {
     }
   });
 
-  // Manejador para abrir enlaces externos
-  mainWindow.webContents.on('new-window', (event, navigationUrl) => {
-    event.preventDefault();
-    require('electron').shell.openExternal(navigationUrl);
-  });
+  // Manejador para abrir enlaces externos - REMOVIDO para evitar doble apertura
+  // Los enlaces externos se manejan ahora solo a través del IPC handler
 
   // Manejador IPC para abrir enlaces externos
   ipcMain.handle('open-external-link', async (event, url) => {
@@ -207,6 +217,14 @@ function createWindow() {
       console.error('[MAIN] Error abriendo enlace externo:', error);
       return { success: false, error: error.message };
     }
+  });
+
+  // Manejador para interceptar window.open() y redirigir al navegador del sistema
+  // Solo como fallback para casos no manejados por externalLinks.js
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    console.log('[MAIN] window.open() interceptado como fallback con URL:', url);
+    require('electron').shell.openExternal(url);
+    return { action: 'deny' }; // Denegar la creación de nueva ventana de Electron
   });
 
   // Manejadores para la barra de título personalizada
@@ -227,6 +245,123 @@ function createWindow() {
   ipcMain.on('close-window', () => {
     // Cerrar la aplicación
     app.quit();
+  });
+
+  // Manejadores del system tray
+  ipcMain.on('minimize-to-tray', () => {
+    console.log('[MAIN] Minimizing to system tray');
+    minimizeToTray();
+  });
+
+  ipcMain.on('restore-from-tray', () => {
+    console.log('[MAIN] Restoring from system tray');
+    restoreFromTray();
+  });
+
+  ipcMain.on('show-tray-notification', (event, { title, message, type }) => {
+    console.log('[MAIN] Showing tray notification:', { title, message, type });
+    showTrayNotification(title, message, type);
+  });
+
+  ipcMain.on('close-app', () => {
+    console.log('[MAIN] Closing app from renderer');
+    app.quit();
+  });
+
+  // Manejadores para limpieza y validación
+  ipcMain.handle('cleanup-incomplete-files', async (event, folderPath, patterns) => {
+    try {
+      console.log('[MAIN] Cleaning up incomplete files in:', folderPath);
+      
+      let deletedCount = 0;
+      
+      // Función recursiva para buscar archivos
+      function findAndDeleteFiles(dir) {
+        try {
+          const items = fs.readdirSync(dir);
+          
+          for (const item of items) {
+            const itemPath = path.join(dir, item);
+            const stats = fs.statSync(itemPath);
+            
+            if (stats.isDirectory()) {
+              // Buscar en subdirectorios
+              findAndDeleteFiles(itemPath);
+            } else {
+              // Verificar si el archivo coincide con algún patrón
+              for (const pattern of patterns) {
+                if (pattern.includes('*')) {
+                  // Patrón simple con wildcard
+                  const regex = new RegExp(pattern.replace('*', '.*'));
+                  if (regex.test(item)) {
+                    try {
+                      fs.unlinkSync(itemPath);
+                      console.log('[MAIN] Deleted incomplete file:', itemPath);
+                      deletedCount++;
+                    } catch (error) {
+                      console.warn('[MAIN] Could not delete file:', itemPath, error.message);
+                    }
+                    break;
+                  }
+                } else if (item.includes(pattern)) {
+                  // Patrón exacto
+                  try {
+                    fs.unlinkSync(itemPath);
+                    console.log('[MAIN] Deleted incomplete file:', itemPath);
+                    deletedCount++;
+                  } catch (error) {
+                    console.warn('[MAIN] Could not delete file:', itemPath, error.message);
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('[MAIN] Error reading directory:', dir, error.message);
+        }
+      }
+      
+      findAndDeleteFiles(folderPath);
+      
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('[MAIN] Error cleaning up incomplete files:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('validate-file-integrity', async (event, folderPath) => {
+    try {
+      console.log('[MAIN] Validating file integrity in:', folderPath);
+      
+      // Verificación básica de archivos
+      const files = fs.readdirSync(folderPath);
+      const validFiles = [];
+      const invalidFiles = [];
+      
+      for (const file of files) {
+        const filePath = path.join(folderPath, file);
+        const stats = fs.statSync(filePath);
+        
+        // Verificar que el archivo no esté corrupto (tamaño > 0)
+        if (stats.size > 0) {
+          validFiles.push(file);
+        } else {
+          invalidFiles.push(file);
+        }
+      }
+      
+      return {
+        valid: invalidFiles.length === 0,
+        validFiles,
+        invalidFiles,
+        reason: invalidFiles.length > 0 ? `Found ${invalidFiles.length} invalid files` : 'All files valid'
+      };
+    } catch (error) {
+      console.error('[MAIN] Error validating file integrity:', error);
+      return { valid: false, reason: error.message };
+    }
   });
 
       // Manejador para logout (cerrar aplicación)
@@ -288,20 +423,54 @@ function createWindow() {
       console.log(`[MAIN] ZIP original: ${zipPath} (tipo: ${typeof zipPath}, es array: ${Array.isArray(zipPath)})`);
       console.log(`[MAIN] Destino original: ${destFolder} (tipo: ${typeof destFolder}, es array: ${Array.isArray(destFolder)})`);
       
-      // Normalizar rutas para evitar problemas con caracteres especiales
-      // Convertir arrays a strings si es necesario
-      const zipPathStr = Array.isArray(zipPath) ? zipPath.join('/') : zipPath;
-      const destFolderStr = Array.isArray(destFolder) ? destFolder.join('/') : destFolder;
+      // Normalizar rutas para evitar problemas con caracteres especiales y duplicaciones
+      let normalizedZipPath, normalizedDestFolder;
       
-      const normalizedZipPath = path.resolve(zipPathStr);
-      const normalizedDestFolder = path.resolve(destFolderStr);
+      if (Array.isArray(zipPath)) {
+        // Si es un array, tomar solo el último elemento para evitar duplicaciones
+        const zipPathStr = zipPath[zipPath.length - 1];
+        normalizedZipPath = path.resolve(zipPathStr);
+        console.log(`[MAIN] ZIP normalizado (array): ${normalizedZipPath}`);
+      } else {
+        normalizedZipPath = path.resolve(zipPath);
+      }
+      
+      if (Array.isArray(destFolder)) {
+        // Si es un array, tomar solo el último elemento para evitar duplicaciones
+        const destFolderStr = destFolder[destFolder.length - 1];
+        normalizedDestFolder = path.resolve(destFolderStr);
+        console.log(`[MAIN] Destino normalizado (array): ${normalizedDestFolder}`);
+      } else {
+        normalizedDestFolder = path.resolve(destFolder);
+      }
       
       console.log('[MAIN] Extrayendo archivo:', normalizedZipPath, 'a:', normalizedDestFolder);
       
       // Verificar que el archivo ZIP existe
       if (!fs.existsSync(normalizedZipPath)) {
         console.error(`[MAIN] Archivo ZIP no existe: ${normalizedZipPath}`);
-        throw new Error(`Archivo ZIP no existe: ${normalizedZipPath}`);
+        console.error(`[MAIN] Verificando si existe en diferentes ubicaciones...`);
+        
+        // Intentar buscar el archivo en ubicaciones alternativas
+        const fileName = path.basename(normalizedZipPath);
+        const possiblePaths = [
+          path.join(path.dirname(normalizedZipPath), fileName),
+          path.join(path.dirname(path.dirname(normalizedZipPath)), fileName),
+          path.join(process.cwd(), fileName)
+        ];
+        
+        for (const possiblePath of possiblePaths) {
+          console.log(`[MAIN] Verificando: ${possiblePath}`);
+          if (fs.existsSync(possiblePath)) {
+            console.log(`[MAIN] Archivo encontrado en ubicación alternativa: ${possiblePath}`);
+            normalizedZipPath = possiblePath;
+            break;
+          }
+        }
+        
+        if (!fs.existsSync(normalizedZipPath)) {
+          throw new Error(`Archivo ZIP no existe: ${normalizedZipPath}`);
+        }
       }
       
       console.log(`[MAIN] Archivo ZIP existe: ${normalizedZipPath}`);
@@ -776,6 +945,44 @@ function createWindow() {
     return process.cwd();
   });
 
+  // Nuevo handler para verificar si una carpeta es válida para L2 (solo para el botón Play)
+  ipcMain.handle('is-valid-l2-folder', async (event, folderPath) => {
+    try {
+      console.log('[MAIN] === Checking if folder is valid L2 ===');
+      console.log('[MAIN] Folder path:', folderPath);
+      
+      // Verificar si la carpeta existe
+      if (!fs.existsSync(folderPath)) {
+        console.log('[MAIN] Folder does not exist:', folderPath);
+        return { isValid: false, reason: 'Folder does not exist' };
+      }
+      
+      // Verificar si es una carpeta válida de L2 (debe tener system/L2.exe)
+      const systemPath = path.join(folderPath, 'system');
+      const l2ExePath = path.join(systemPath, 'L2.exe');
+      const hasValidL2Structure = fs.existsSync(systemPath) && fs.existsSync(l2ExePath);
+      
+      console.log('[MAIN] Has valid L2 structure:', hasValidL2Structure);
+      console.log('[MAIN] System path exists:', fs.existsSync(systemPath));
+      console.log('[MAIN] L2.exe exists:', fs.existsSync(l2ExePath));
+      
+      if (!hasValidL2Structure) {
+        console.log('[MAIN] Not a valid L2 folder - no system/L2.exe found');
+        return { 
+          isValid: false, 
+          reason: 'No system/L2.exe found. Please select a valid Lineage 2 client folder.' 
+        };
+      }
+      
+      console.log('[MAIN] Valid L2 folder detected');
+      return { isValid: true, reason: 'Valid L2 client folder' };
+      
+    } catch (error) {
+      console.error('[MAIN] Error checking L2 folder validity:', error);
+      return { isValid: false, reason: 'Error checking folder validity' };
+    }
+  });
+
   ipcMain.handle('get-local-files', async (event, folderPath) => {
     try {
       console.log('[MAIN] === Getting local files ===');
@@ -791,11 +998,45 @@ function createWindow() {
       const files = fs.readdirSync(folderPath);
       console.log('[MAIN] All files in folder:', files);
       
+      // Verificar si es una carpeta válida de L2 (debe tener system/L2.exe)
+      const systemPath = path.join(folderPath, 'system');
+      const l2ExePath = path.join(systemPath, 'L2.exe');
+      const hasValidL2Structure = fs.existsSync(systemPath) && fs.existsSync(l2ExePath);
+      
+      console.log('[MAIN] Has valid L2 structure:', hasValidL2Structure);
+      console.log('[MAIN] System path exists:', fs.existsSync(systemPath));
+      console.log('[MAIN] L2.exe exists:', fs.existsSync(l2ExePath));
+      
+      // IMPORTANTE: No retornar array vacío si no es L2 válido
+      // El sistema de actualizaciones debe funcionar siempre
+      if (!hasValidL2Structure) {
+        console.log('[MAIN] Not a valid L2 folder - but continuing with file detection for updates');
+      }
+      
       for (const file of files) {
         console.log('[MAIN] Checking file:', file);
         
-        // Buscar tanto archivos ZIP como archivos extraídos
-        if (file.endsWith('.zip') || file === 'system' || file === 'bgc1' || file === 'documentosintitulo') {
+        // Buscar archivos ZIP, archivos extraídos y archivos del servidor
+        if (file.endsWith('.zip') || 
+            file === 'system' || 
+            file === 'bgc1' || 
+            file === 'documentosintitulo' ||
+            // Archivos extraídos del servidor
+            file === 'ActualizacionEjemplo' ||
+            file === 'fluid.html' ||
+            file === 'fluid.jpg' ||
+            file === 'fluid_preview.gif' ||
+            file === 'iconfont.ttf' ||
+            file === 'javaicon.png' ||
+            file === 'js' ||
+            file === 'wallpapers' ||
+            file.startsWith('Poliza_') ||
+            file.endsWith('.PDF') ||
+            file.endsWith('.png') ||
+            file.endsWith('.html') ||
+            file.endsWith('.gif') ||
+            file.endsWith('.ttf')) {
+          
           const filePath = path.join(folderPath, file);
           const stats = fs.statSync(filePath);
           
@@ -824,7 +1065,7 @@ function createWindow() {
         }
       }
       
-      console.log('[MAIN] Total ZIP files found:', localFiles.length);
+      console.log('[MAIN] Total files found:', localFiles.length);
       console.log('[MAIN] Archivos locales encontrados:', localFiles);
       return localFiles;
     } catch (error) {
@@ -836,7 +1077,27 @@ function createWindow() {
   ipcMain.on('download-file', (event, { url, destFolder, fileName }) => {
     console.log('[DOWNLOAD][MAIN] Parámetros recibidos:', { url, destFolder, fileName });
     console.log('[DOWNLOAD][MAIN] Tipo de destFolder:', typeof destFolder, Array.isArray(destFolder));
-    console.log('[DOWNLOAD][MAIN] Iniciando descarga:', url, '->', path.join(destFolder, fileName));
+    console.log('[DOWNLOAD][MAIN] Tipo de fileName:', typeof fileName, Array.isArray(fileName));
+    
+    // Normalizar rutas para evitar duplicaciones
+    let normalizedDestFolder = destFolder;
+    let normalizedFileName = fileName;
+    
+    if (Array.isArray(destFolder)) {
+      // Si es un array, tomar solo el último elemento para evitar duplicaciones
+      normalizedDestFolder = destFolder[destFolder.length - 1];
+      console.log('[DOWNLOAD][MAIN] DestFolder normalizado (array):', normalizedDestFolder);
+    }
+    
+    if (Array.isArray(fileName)) {
+      // Si es un array, tomar solo el último elemento
+      normalizedFileName = fileName[fileName.length - 1];
+      console.log('[DOWNLOAD][MAIN] FileName normalizado (array):', normalizedFileName);
+    }
+    
+    const destPath = path.join(normalizedDestFolder, normalizedFileName);
+    console.log('[DOWNLOAD][MAIN] Ruta final normalizada:', destPath);
+    console.log('[DOWNLOAD][MAIN] Iniciando descarga:', url, '->', destPath);
     
     let startTime = Date.now();
     let lastUpdateTime = startTime;
@@ -901,10 +1162,7 @@ function createWindow() {
 
     try {
       const proto = url.startsWith('https') ? https : http;
-      // Convertir arrays a strings si es necesario
-      const destFolderStr = Array.isArray(destFolder) ? destFolder.join('/') : destFolder;
-      const fileNameStr = Array.isArray(fileName) ? fileName.join('/') : fileName;
-      const destPath = path.join(destFolderStr, fileNameStr);
+      // Usar las rutas normalizadas que ya calculamos arriba
       const file = fs.createWriteStream(destPath);
       
       proto.get(url, (response) => {
@@ -951,6 +1209,131 @@ function createWindow() {
      mainWindow.webContents.openDevTools();
    }
 }
+
+// Funciones del system tray
+function createTray() {
+  try {
+    console.log('[MAIN] Creating system tray...');
+    
+    // Crear el ícono del tray
+    const iconPath = resolveAssetPath('assets', 'images', 'icons', 'terra_icon.ico');
+    console.log('[MAIN] Tray icon path:', iconPath);
+    
+    tray = new Tray(iconPath);
+    tray.setToolTip('L2 Terra Launcher');
+    console.log('[MAIN] System tray created successfully');
+  
+    // Crear menú del tray
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Restaurar',
+        click: () => {
+          restoreFromTray();
+        }
+      },
+      {
+        label: 'Salir',
+        click: () => {
+          app.quit();
+        }
+      }
+    ]);
+    
+    tray.setContextMenu(contextMenu);
+    
+    // Hacer clic en el ícono del tray para restaurar
+    tray.on('click', () => {
+      restoreFromTray();
+    });
+    
+    console.log('[MAIN] System tray menu and events configured');
+  } catch (error) {
+    console.error('[MAIN] Error creating system tray:', error);
+    tray = null;
+  }
+}
+
+function minimizeToTray() {
+  console.log('[MAIN] minimizeToTray() called');
+  console.log('[MAIN] Current tray state:', tray ? 'exists' : 'null');
+  
+  if (!tray) {
+    console.log('[MAIN] Creating tray...');
+    createTray();
+  }
+  
+  console.log('[MAIN] Tray after creation:', tray ? 'exists' : 'null');
+  console.log('[MAIN] MainWindow state:', mainWindow ? (mainWindow.isDestroyed() ? 'destroyed' : 'active') : 'null');
+  
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.hide();
+    isMinimizedToTray = true;
+    console.log('[MAIN] Window minimized to system tray');
+  } else {
+    console.log('[MAIN] Cannot minimize - window not available');
+  }
+}
+
+function restoreFromTray() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    isMinimizedToTray = false;
+    console.log('[MAIN] Window restored from system tray');
+  }
+}
+
+function showTrayNotification(title, message, type = 'info') {
+  if (tray) {
+    tray.displayBalloon({
+      title: title,
+      content: message,
+      icon: resolveAssetPath('assets', 'images', 'icons', 'terra_icon.ico')
+    });
+  }
+}
+
+// Handlers para validación de cliente L2
+ipcMain.handle('path-exists', async (event, path) => {
+  try {
+    return fs.existsSync(path);
+  } catch (error) {
+    console.error('[MAIN] Error checking path exists:', error);
+    return false;
+  }
+});
+
+ipcMain.handle('read-directory', async (event, folderPath) => {
+  try {
+    console.log('[MAIN] Reading directory:', folderPath);
+    
+    if (!fs.existsSync(folderPath)) {
+      console.log('[MAIN] Directory does not exist:', folderPath);
+      return { folders: [], files: [] };
+    }
+    
+    const items = fs.readdirSync(folderPath);
+    const folders = [];
+    const files = [];
+    
+    for (const item of items) {
+      const itemPath = path.join(folderPath, item);
+      const stats = fs.statSync(itemPath);
+      
+      if (stats.isDirectory()) {
+        folders.push(item);
+      } else {
+        files.push(item);
+      }
+    }
+    
+    console.log('[MAIN] Directory contents:', { folders, files });
+    return { folders, files };
+  } catch (error) {
+    console.error('[MAIN] Error reading directory:', error);
+    return { folders: [], files: [] };
+  }
+});
 
 
 
@@ -1017,8 +1400,12 @@ app.on('quit', () => {
   if (errorWindow && !errorWindow.isDestroyed()) {
     errorWindow.destroy();
   }
-  
 
+  // Limpiar el tray
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
 });
 
 // Manejar señales del sistema

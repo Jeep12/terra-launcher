@@ -20,8 +20,8 @@ function openExternalLink(url) {
 
 // Event listeners para los enlaces (opcional, ya que se configura desde index.html)
 document.addEventListener('DOMContentLoaded', function() {
-  // Encontrar todos los enlaces con data-url
-  const externalLinks = document.querySelectorAll('.nav-link[data-url]');
+  // Encontrar todos los enlaces con data-url (tanto nav-link como external-link)
+  const externalLinks = document.querySelectorAll('.nav-link[data-url], .external-link[data-url]');
   
   externalLinks.forEach(link => {
     link.addEventListener('click', function(e) {

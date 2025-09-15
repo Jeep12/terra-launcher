@@ -85,6 +85,8 @@
               </div>
             </div>
 
+
+
             <!-- Progress Details -->
             <div class="progress-details" id="progressDetails">
               <div class="progress-info">
@@ -113,14 +115,13 @@
     <div class="game-panel">
       <!-- Hero Section -->
       <div class="hero-section">
-        <div class="hero-background"></div>
+        <div class="hero-background">
+          <video autoplay muted loop playsinline preload="metadata">
+            <source src="assets/images/backgrounds/videobg.mp4" type="video/mp4">
+          </video>
+        </div>
         <div class="hero-content">
-          <div class="hero-badge">
-            <i class="fa-solid fa-crown"></i>
-            <span>LATEST UPDATE</span>
-          </div>
-
-          <span style="float: right;display: flex;flex-direction: column;color: greenyellow; gap: 8px;">
+          <span style="float: right;display: flex;flex-direction: column;color: greenyellow; gap: 8px; margin-top: -60px !important;">
             <span class="stat-item" title="Total Players"
               style="display: flex; align-items: center; gap: 6px; cursor: help;">
               <i class="fa-solid fa-users" style="font-size: 16px;"></i>
@@ -135,6 +136,9 @@
           <h1 class="hero-title"> Wrath of Gaia </h1>
           <p class="hero-subtitle">The wrath of the earth awakens, and with it, war.</p>
           <p></p>
+          <div class="coloratras">
+            
+          </div>
         </div>
 
       </div>
@@ -358,28 +362,11 @@
       });
     }
 
-    // Función para abrir enlaces externos
-    function openExternalLink(url) {
-      if (window.electron && window.electron.openExternal) {
-        window.electron.openExternal(url);
-      } else {
-        window.open(url, '_blank');
-      }
-    }
-
-    // Función para configurar enlaces externos
+    // Función para configurar enlaces externos - REMOVIDA
+    // Los enlaces externos se manejan ahora solo a través de externalLinks.js
     function setupExternalLinks() {
-      const externalLinks = document.querySelectorAll('.external-link');
-
-      externalLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          const url = link.getAttribute('data-url');
-          if (url) {
-            openExternalLink(url);
-          }
-        });
-      });
+      // Esta función ya no es necesaria - externalLinks.js maneja todo
+      console.log('External links handled by externalLinks.js');
     }
 
     // Configurar enlaces externos al cargar la página

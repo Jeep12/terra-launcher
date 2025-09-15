@@ -51,10 +51,21 @@ class PatchDownloader {
 
   // Actualizar el estado de la carpeta actual
   updateCurrentFolder(folderPath) {
+    console.log('[PATCH] === updateCurrentFolder called ===');
+    console.log('[PATCH] New folder path:', folderPath);
+    console.log('[PATCH] Previous folder:', this.currentFolder);
+    
     this.currentFolder = folderPath;
+    
     if (this.currentFolder && window.electron) {
       const folderHash = this.generateFolderHash(this.currentFolder);
       this.updateStateFile = window.electron.path.join(this.userDataFolder, `update_state_${folderHash}.json`);
+      
+      console.log('[PATCH] Generated folder hash:', folderHash);
+      console.log('[PATCH] Update state file path:', this.updateStateFile);
+    } else {
+      console.log('[PATCH] Cannot set update state file - missing requirements');
+      this.updateStateFile = null;
     }
   }
 
@@ -178,21 +189,66 @@ class PatchDownloader {
     }
   }
 
+  // Verificar si una carpeta ya fue actualizada previamente
+  async isFolderPreviouslyUpdated(folderPath) {
+    try {
+      console.log('[PATCH] === Checking if folder was previously updated ===');
+      console.log('[PATCH] Folder path:', folderPath);
+      
+      // Actualizar la carpeta actual temporalmente para generar el hash
+      const originalFolder = this.currentFolder;
+      this.updateCurrentFolder(folderPath);
+      
+      const updateState = await this.getUpdateState();
+      
+      // Restaurar la carpeta original
+      this.currentFolder = originalFolder;
+      
+      if (updateState && updateState.serverFiles && updateState.serverFiles.length > 0) {
+        console.log('[PATCH] Folder was previously updated:', {
+          lastUpdate: new Date(updateState.lastUpdate).toLocaleString(),
+          serverFilesCount: updateState.serverFiles.length
+        });
+        return true;
+      }
+      
+      console.log('[PATCH] Folder was not previously updated');
+      return false;
+    } catch (error) {
+      console.error('[PATCH] Error checking if folder was previously updated:', error);
+      return false;
+    }
+  }
+
   // Leer estado de actualización guardado
   async getUpdateState() {
     try {
       if (!this.updateStateFile || !window.electron || !this.currentFolder) {
+        console.log('[PATCH] Cannot get update state - missing requirements:', {
+          hasUpdateStateFile: !!this.updateStateFile,
+          hasElectron: !!window.electron,
+          hasCurrentFolder: !!this.currentFolder
+        });
         return null;
       }
 
+      console.log('[PATCH] Reading update state from:', this.updateStateFile);
       const stateData = await window.electron.readFile(this.updateStateFile);
+      
       if (stateData) {
         const state = JSON.parse(stateData);
+        console.log('[PATCH] Update state loaded successfully:', {
+          folderPath: state.folderPath,
+          lastUpdate: state.lastUpdate,
+          serverFilesCount: state.serverFiles?.length || 0
+        });
         return state;
       }
       
+      console.log('[PATCH] No update state file found or empty');
       return null;
     } catch (error) {
+      console.error('[PATCH] Error reading update state:', error);
       return null;
     }
   }
@@ -200,7 +256,15 @@ class PatchDownloader {
   // Guardar estado de actualización en userData
   async saveUpdateState(serverFiles) {
     try {
+      console.log('[PATCH] === saveUpdateState called ===');
+      console.log('[PATCH] Server files to save:', serverFiles.length);
+      
       if (!this.updateStateFile || !window.electron || !this.currentFolder) {
+        console.log('[PATCH] Cannot save update state - missing requirements:', {
+          hasUpdateStateFile: !!this.updateStateFile,
+          hasElectron: !!window.electron,
+          hasCurrentFolder: !!this.currentFolder
+        });
         return;
       }
 
@@ -227,7 +291,9 @@ class PatchDownloader {
         }
       };
 
+      console.log('[PATCH] Saving update state to:', this.updateStateFile);
       await window.electron.writeFile(this.updateStateFile, JSON.stringify(state, null, 2));
+      console.log('[PATCH] Update state saved successfully');
     } catch (error) {
       console.error('[PATCH] Error saving update state:', error);
     }
@@ -265,9 +331,19 @@ class PatchDownloader {
 
   // Obtener archivos que necesitan actualización
   async getFilesToUpdate(serverFiles, localFiles) {
+    console.log('[PATCH] === getFilesToUpdate called ===');
+    console.log('[PATCH] Current folder:', this.currentFolder);
+    console.log('[PATCH] Server files count:', serverFiles.length);
+    console.log('[PATCH] Local files count:', localFiles.length);
+    
     // Primero intentar usar el estado guardado
     const updateState = await this.getUpdateState();
+    console.log('[PATCH] Update state found:', !!updateState);
+    
     if (updateState && updateState.serverFiles && updateState.folderPath === this.currentFolder) {
+      console.log('[PATCH] Using saved update state for comparison');
+      console.log('[PATCH] Saved files count:', updateState.serverFiles.length);
+      
       const savedFilesMap = new Map(updateState.serverFiles.map(f => [f.name, f]));
       const filesToUpdate = [];
       
@@ -276,15 +352,27 @@ class PatchDownloader {
         
         if (!savedFile) {
           // Archivo nuevo en el servidor
+          console.log('[PATCH] New file on server:', serverFile.name);
           filesToUpdate.push(serverFile);
         } else if (savedFile.modified !== serverFile.modified || savedFile.size !== serverFile.size) {
           // Archivo actualizado en el servidor
+          console.log('[PATCH] File updated on server:', serverFile.name, {
+            savedModified: savedFile.modified,
+            serverModified: serverFile.modified,
+            savedSize: savedFile.size,
+            serverSize: serverFile.size
+          });
           filesToUpdate.push(serverFile);
+        } else {
+          console.log('[PATCH] File is up to date:', serverFile.name);
         }
       }
       
+      console.log('[PATCH] Files to update (using saved state):', filesToUpdate.length);
       return filesToUpdate;
     }
+    
+    console.log('[PATCH] No saved state found, using local files comparison');
     
     // Fallback: comparar con archivos locales
     const localFilesMap = new Map(localFiles.map(f => [f.name, f]));
@@ -295,13 +383,18 @@ class PatchDownloader {
       
       if (!localFile) {
         // Archivo no existe localmente
+        console.log('[PATCH] File missing locally:', serverFile.name);
         filesToUpdate.push(serverFile);
       } else if (!this.isFileUpToDate(localFile, serverFile)) {
         // Archivo existe pero está desactualizado
+        console.log('[PATCH] File outdated locally:', serverFile.name);
         filesToUpdate.push(serverFile);
+      } else {
+        console.log('[PATCH] File is up to date (local check):', serverFile.name);
       }
     }
     
+    console.log('[PATCH] Files to update (using local files):', filesToUpdate.length);
     return filesToUpdate;
   }
 
@@ -346,12 +439,22 @@ class PatchDownloader {
         return;
       }
 
+      // Verificar si la carpeta ya fue actualizada previamente
+      const wasPreviouslyUpdated = await this.isFolderPreviouslyUpdated(destFolder);
+      console.log('[PATCH] Folder was previously updated:', wasPreviouslyUpdated);
+      
       // Obtener archivos locales para comparar
       const localFiles = await this.getLocalFiles(destFolder);
       const filesToUpdate = await this.getFilesToUpdate(serverFiles, localFiles);
       
+      console.log('[PATCH] Files that need updating:', filesToUpdate.length);
+      
       if (filesToUpdate.length === 0) {
-        onComplete?.('Todos los archivos están actualizados ✓');
+        if (wasPreviouslyUpdated) {
+          onComplete?.('Todos los archivos están actualizados ✓ (carpeta previamente actualizada)');
+        } else {
+          onComplete?.('Todos los archivos están actualizados ✓');
+        }
         return;
       }
 
@@ -363,6 +466,8 @@ class PatchDownloader {
         if (!this.isDownloading) {
           break;
         }
+
+
 
         try {
           // Calcular rangos de progreso para este archivo
@@ -528,6 +633,10 @@ class PatchDownloader {
   // Extraer archivo ZIP
   async extractFile(zipPath, destFolder, onProgress) {
     try {
+      console.log('[PATCH] === extractFile called ===');
+      console.log('[PATCH] zipPath:', zipPath, '(tipo:', typeof zipPath, ', es array:', Array.isArray(zipPath), ')');
+      console.log('[PATCH] destFolder:', destFolder, '(tipo:', typeof destFolder, ', es array:', Array.isArray(destFolder), ')');
+      
       // Verificar que window.electron esté disponible
       if (!window.electron) {
         console.warn('[PATCH] Electron no está disponible, usando simulación de extracción');
@@ -541,6 +650,7 @@ class PatchDownloader {
         this.setupExtractionListeners(onProgress, resolve, reject);
         
         // Iniciar extracción
+        console.log('[PATCH] Llamando a window.electron.extractZipFile con rutas normalizadas');
         window.electron.extractZipFile(zipPath, destFolder);
       });
       

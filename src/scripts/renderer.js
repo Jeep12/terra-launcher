@@ -186,10 +186,10 @@ window.connectUIManager = (gameLauncherInstance) => {
     // Conectar métodos del UIManager con GameLauncher
     gameLauncherInstance.uiManager = uiManager;
     
-    // Sobrescribir métodos de GameLauncher para usar UIManager
-    gameLauncherInstance.showToast = (message, type, duration) => {
-      uiManager.showToast(message, type, duration);
-    };
+    // Conectar UIManager pero NO sobrescribir showToast (usar toastManager)
+    // gameLauncherInstance.showToast = (message, type, duration) => {
+    //   uiManager.showToast(message, type, duration);
+    // };
     
     gameLauncherInstance.updateProgressBar = (progressFill, progressPercent, progressStatus, message) => {
       uiManager.updateProgressBar(

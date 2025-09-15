@@ -13,7 +13,15 @@ body {
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
-
+.coloratras {
+  width: 100%;
+  height:  30px;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  background:linear-gradient(to bottom, transparent,#10172A);
+  z-index: 1;
+}
 /* Header minimalista */
 .launcher-header {
   position: fixed;
@@ -123,7 +131,7 @@ body {
 }
 
 .controls-logo {
-  height: 60px;
+  height: 180px;
   width: auto;
   margin-bottom: 15px;
   filter: drop-shadow(0 4px 8px rgba(245, 158, 11, 0.3));
@@ -380,7 +388,7 @@ body {
 
 /* Hero Section */
 .hero-section {
-  height: 320px;
+  height: 220px;
   position: relative;
   overflow: hidden;
   display: flex;
@@ -390,8 +398,21 @@ body {
 .hero-background {
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%);
-  opacity: 0.9;
+  background-image: url('../images/backgrounds/herobgfull.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.hero-background video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .hero-background::after {
@@ -399,6 +420,7 @@ body {
   position: absolute;
   inset: 0;
   background: radial-gradient(circle at 70% 30%, rgba(245, 158, 11, 0.1) 0%, transparent 50%);
+  z-index: 1;
 }
 
 .hero-content {
@@ -410,23 +432,17 @@ body {
   width: 100%;
 }
 
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(245, 158, 11, 0.15);
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  padding: 8px 16px;
-  border-radius: 25px;
-  font-size: 12px;
-  font-weight: 600;
-  color: #f59e0b;
-  margin-bottom: 20px;
-  backdrop-filter: blur(10px);
-}
 
-.hero-badge i {
-  font-size: 14px;
+
+
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
 }
 
 .hero-title {
@@ -818,6 +834,85 @@ body {
   font-weight: 500;
 }
 
+/* Go to Website Button */
+.go-to-website {
+  width: 50%;
+  padding: 5px;
+  margin: 15px auto !important;
+  display: block;
+  padding: 5px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 20px 0;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.go-to-website::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.go-to-website:hover::before {
+  opacity: 1;
+}
+
+.go-to-website:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: rgba(245, 158, 11, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  color: #f59e0b;
+}
+
+.go-to-website:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.go-to-website i {
+  font-size: 18px;
+  filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.3));
+  transition: all 0.3s ease;
+}
+
+.go-to-website:hover i {
+  color: #f59e0b;
+  transform: scale(1.1);
+}
+
+.go-to-website span {
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.go-to-website:hover span {
+  color: #f59e0b;
+  text-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .controls-panel {
@@ -905,3 +1000,4 @@ body {
   transform: none;
   box-shadow: none;
 }
+

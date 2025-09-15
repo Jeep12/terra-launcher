@@ -79,6 +79,13 @@ export function initFolderSelector() {
                     // Mostrar toast de confirmación
                     if (window.gameLauncher) {
                         window.gameLauncher.showToast('Folder cleared successfully', 'success');
+                        
+                        // Actualizar estado del botón Play
+                        if (window.gameLauncher.updatePlayButtonState) {
+                            setTimeout(() => {
+                                window.gameLauncher.updatePlayButtonState();
+                            }, 100);
+                        }
                     }
                     
                     console.log('Folder cleared successfully');
@@ -120,6 +127,13 @@ export function initFolderSelector() {
                         progressStatus.textContent = 'Checking new folder...';
                         if (progressDetails) progressDetails.style.display = 'none';
                     }
+                    
+                    // Actualizar estado del botón Play
+                    if (window.gameLauncher && window.gameLauncher.updatePlayButtonState) {
+                        setTimeout(() => {
+                            window.gameLauncher.updatePlayButtonState();
+                        }, 100);
+                    }
                 } else {
                     localStorage.removeItem('selectedFolder');
                     console.log('Folder removed from localStorage');
@@ -130,13 +144,7 @@ export function initFolderSelector() {
                     console.log('UI updated immediately: Select Folder mode');
                 }
                 
-                // Check client status after selecting folder
-                if (window.gameLauncher) {
-                    console.log('Checking client status...');
-                    window.gameLauncher.checkClientStatus();
-                } else {
-                    console.log('window.gameLauncher not available');
-                }
+
             });
             
             console.log('FolderSelector initialization completed');

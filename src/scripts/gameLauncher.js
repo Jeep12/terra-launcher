@@ -11,6 +11,8 @@ import RankingService from './rankingService.js';
 import PatchNotesService from './patchNotesService.js';
 import PlayerStatsService from './playerStatsService.js';
 import PatchDownloader from './patchDownloader.js';
+import { toastManager } from './ui/toastManager.js';
+import { l2ClientValidator } from './l2ClientValidator.js';
 // import { Installer } from './installer.js'; // Removed - installer.js was deleted
 
 class GameLauncher {
@@ -19,12 +21,18 @@ class GameLauncher {
     this.isDownloading = false;
     this.isRepairing = false;
     this.isClientReady = false;
+    this.isUpdating = false; // Nuevo estado para check for updates
+    this.currentOperation = null; // Operación actual en curso
     this.downloadStats = {
       totalFiles: 0,
       completedFiles: 0,
       currentFile: null,
       currentProgress: 0
     };
+    
+    // Control de operaciones simultáneas
+    this.operationQueue = [];
+    this.isProcessingQueue = false;
     
     // Inicializar servicios
     logger.debug('Inicializando servicios...', null, 'GameLauncher');
@@ -43,6 +51,9 @@ class GameLauncher {
     try {
       logger.debug('GameLauncher.initialize() iniciado', null, 'GameLauncher');
       logger.info('Initializing GameLauncher systems');
+      
+      // Configurar listener para detectar cierre de ventana
+      this.setupWindowCloseListener();
       
       // Inicializar patch downloader
       logger.debug('Inicializando PatchDownloader...', null, 'GameLauncher');
@@ -68,6 +79,17 @@ class GameLauncher {
       await repairService.initialize(this.patchDownloader);
       logger.debug('Repair service inicializado', null, 'GameLauncher');
       
+      
+      
+      // El badge es solo informativo, no necesita evento click
+      
+      // Probar el sistema de toast después de un breve delay
+      // setTimeout(() => {
+      //   if (window.toastManager) {
+      //     window.toastManager.testToast();
+      //   }
+      // }, 2000);
+      
       logger.debug('GameLauncher.initialize() completado exitosamente', null, 'GameLauncher');
       logger.info('GameLauncher initialized successfully');
     } catch (error) {
@@ -77,29 +99,291 @@ class GameLauncher {
     }
   }
 
-  showToast(message, type = 'info', duration = 3000) {
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `
-      <div class="toast-content">
-        <span class="toast-message">${message}</span>
-      </div>
-    `;
+  // Validar si se puede ejecutar una operación
+  canExecuteOperation(operationType) {
+    if (this.isDownloading || this.isRepairing || this.isUpdating) {
+      const currentOp = this.currentOperation || 'unknown operation';
+      
+      // Para el botón Play, permitir pero mostrar advertencia
+      if (operationType === 'play') {
+        this.showWarning(`Game launch may be affected by ${currentOp} in progress`);
+        return true;
+      }
+      
+      // Para otras operaciones, bloquear y mostrar error
+      this.showWarning(`Please wait for ${currentOp} to complete`);
+      return false;
+    }
+    return true;
+  }
+
+
+
+
+
+  // Establecer estado de operación
+  setOperationState(operationType, isActive) {
+    switch (operationType) {
+      case 'download':
+        this.isDownloading = isActive;
+        break;
+      case 'repair':
+        this.isRepairing = isActive;
+        break;
+      case 'update':
+        this.isUpdating = isActive;
+        break;
+    }
     
-    document.body.appendChild(toast);
+    this.currentOperation = isActive ? operationType : null;
     
-    setTimeout(() => {
-      toast.classList.add('show');
-    }, 100);
+    if (isActive) {
+      // Resetear contador de notificaciones del system tray
+      this.lastTrayNotification = 0;
+      
+      // this.showInfo(`${operationType} started...`);
+      this.updateTrayNotification(operationType, 0);
+    } else {
+      // this.showSuccess(`${operationType} completed`);
+      this.updateTrayNotification(operationType, 100);
+    }
+  }
+
+  // Manejar interrupción de operación
+  handleOperationInterruption(operationType) {
+    this.setOperationState(operationType, false);
+    // this.showWarning(`${operationType} was interrupted`);
     
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => {
-        if (toast.parentNode) {
-          toast.parentNode.removeChild(toast);
+    // Limpiar estados
+    this.isDownloading = false;
+    this.isRepairing = false;
+    this.isUpdating = false;
+    this.currentOperation = null;
+  }
+
+  // Manejar errores de operación
+  handleOperationError(operationType, error) {
+    this.setOperationState(operationType, false);
+    // this.showError(`${operationType} failed: ${error.message}`);
+    
+    logger.error(`${operationType} operation failed`, { error: error.message });
+  }
+
+  // Configurar listener para detectar cierre de ventana
+  setupWindowCloseListener() {
+    try {
+      if (window.electron && window.electron.onWindowClose) {
+        window.electron.onWindowClose(() => {
+          if (this.isDownloading || this.isRepairing || this.isUpdating) {
+            // Hay operaciones en curso - minimizar al system tray
+            this.handleWindowCloseWithActiveOperations();
+          } else {
+            // No hay operaciones - cerrar normalmente
+            this.handleNormalWindowClose();
+          }
+        });
+        logger.debug('Window close listener configured successfully', null, 'GameLauncher');
+      } else {
+        logger.debug('Window close listener not available - skipping', null, 'GameLauncher');
+      }
+    } catch (error) {
+      logger.warn('Failed to setup window close listener', { error: error.message }, 'GameLauncher');
+      // No lanzar error para no interrumpir la inicialización
+    }
+  }
+
+  // Manejar cierre de ventana con operaciones activas
+  handleWindowCloseWithActiveOperations() {
+    try {
+      const currentOp = this.currentOperation || 'operation';
+      
+      // Mostrar notificación al usuario
+      // this.showInfo(`Minimizing to system tray - ${currentOp} in progress`, 5000);
+      
+      // Minimizar al system tray en lugar de cerrar
+      if (window.electron && window.electron.minimizeToTray) {
+        window.electron.minimizeToTray();
+      } else {
+        // Fallback: minimizar ventana
+        if (window.electron && window.electron.minimizeWindow) {
+          window.electron.minimizeWindow();
         }
-      }, 300);
-    }, duration);
+      }
+      
+      logger.info(`Window minimized to tray during ${currentOp}`, { operation: currentOp });
+    } catch (error) {
+      logger.warn('Failed to handle window close with active operations', { error: error.message });
+      // Fallback: solo mostrar toast
+      // this.showWarning(`Operation ${this.currentOperation || 'in progress'} - please wait`);
+    }
+  }
+
+  // Manejar cierre normal de ventana
+  handleNormalWindowClose() {
+    try {
+      logger.info('Window closing normally - no active operations');
+      
+      // Limpiar recursos y cerrar
+      if (window.electron && window.electron.closeApp) {
+        window.electron.closeApp();
+      }
+    } catch (error) {
+      logger.warn('Failed to handle normal window close', { error: error.message });
+    }
+  }
+
+  // Cancelar operación en curso
+  cancelCurrentOperation() {
+    if (!this.currentOperation) {
+      // this.showInfo('No operation in progress');
+      return;
+    }
+
+    const operationType = this.currentOperation;
+    this.handleOperationInterruption(operationType);
+    
+    // Cancelar operaciones específicas
+    if (operationType === 'repair') {
+      repairService.cancelRepair();
+    }
+    
+    // this.showWarning(`${operationType} cancelled by user`);
+    logger.info(`${operationType} cancelled by user`);
+  }
+
+  // Obtener estado actual de operaciones
+  getOperationStatus() {
+    return {
+      isDownloading: this.isDownloading,
+      isRepairing: this.isRepairing,
+      isUpdating: this.isUpdating,
+      currentOperation: this.currentOperation,
+      canStartNewOperation: !this.isDownloading && !this.isRepairing && !this.isUpdating
+    };
+  }
+
+  // Restaurar ventana desde system tray
+  restoreFromTray() {
+    try {
+      if (window.electron && window.electron.restoreFromTray) {
+        window.electron.restoreFromTray();
+        // this.showInfo('Launcher restored from system tray');
+        logger.info('Window restored from system tray');
+      }
+    } catch (error) {
+      logger.warn('Failed to restore from tray', { error: error.message });
+    }
+  }
+
+  // Verificar si hay operaciones activas
+  hasActiveOperations() {
+    return this.isDownloading || this.isRepairing || this.isUpdating;
+  }
+
+  // Mostrar notificación del system tray
+  showTrayNotification(title, message, type = 'info') {
+    try {
+      if (window.electron && window.electron.showTrayNotification) {
+        window.electron.showTrayNotification(title, message, type);
+      }
+    } catch (error) {
+      logger.warn('Failed to show tray notification', { error: error.message });
+    }
+  }
+
+  // Actualizar notificación del system tray durante operaciones
+  updateTrayNotification(operationType, progress = null) {
+    if (!this.hasActiveOperations()) return;
+
+    // Solo enviar notificación cada 10% para evitar spam
+    if (progress !== null) {
+      const lastNotification = this.lastTrayNotification || 0;
+      const progressRounded = Math.floor(progress / 10) * 10; // Redondear a múltiplos de 10
+      
+      // Solo enviar si el progreso cambió significativamente (cada 10%)
+      if (progressRounded <= lastNotification) {
+        return;
+      }
+      
+      this.lastTrayNotification = progressRounded;
+    }
+
+    const title = 'L2 Terra Launcher';
+    let message = `${operationType} in progress`;
+    
+    if (progress !== null) {
+      message += ` - ${Math.round(progress)}%`;
+    }
+
+    this.showTrayNotification(title, message, 'info');
+  }
+
+  // Limpiar archivos temporales incompletos
+  async cleanupIncompleteFiles() {
+    try {
+      const selectedFolder = localStorage.getItem('selectedFolder');
+      if (!selectedFolder) return;
+
+      // Buscar archivos temporales incompletos
+      const tempPatterns = [
+        'temp_download',
+        'temp_repair',
+        '*.tmp',
+        '*.temp',
+        '*.part'
+      ];
+
+      if (window.electron && window.electron.cleanupIncompleteFiles) {
+        await window.electron.cleanupIncompleteFiles(selectedFolder, tempPatterns);
+        logger.info('Incomplete files cleaned up');
+      } else {
+        logger.debug('cleanupIncompleteFiles not available in Electron');
+      }
+    } catch (error) {
+      logger.warn('Error cleaning up incomplete files', { error: error.message });
+      // No lanzar error para no interrumpir el flujo
+    }
+  }
+
+  // Validar integridad de archivos locales
+  async validateLocalFilesIntegrity() {
+    try {
+      const selectedFolder = localStorage.getItem('selectedFolder');
+      if (!selectedFolder) return { valid: false, reason: 'No folder selected' };
+
+      if (window.electron && window.electron.validateFileIntegrity) {
+        const result = await window.electron.validateFileIntegrity(selectedFolder);
+        return result;
+      }
+
+      logger.debug('validateFileIntegrity not available in Electron');
+      return { valid: true, reason: 'Validation not available' };
+    } catch (error) {
+      logger.warn('Error validating file integrity', { error: error.message });
+      return { valid: false, reason: error.message };
+    }
+  }
+
+  showToast(message, type = 'info', duration = 3000) {
+    // Usar el nuevo sistema de toast manager
+    return toastManager.showToast(message, type, duration);
+  }
+
+  // Métodos de conveniencia para toasts específicos
+  showSuccess(message, duration = 3000) {
+    return toastManager.showSuccess(message, duration);
+  }
+
+  showError(message, duration = 5000) {
+    return toastManager.showError(message, duration);
+  }
+
+  showWarning(message, duration = 4000) {
+    return toastManager.showWarning(message, duration);
+  }
+
+  showInfo(message, duration = 3000) {
+    return toastManager.showInfo(message, duration);
   }
 
   setupDownloadButton() {
@@ -143,7 +427,7 @@ class GameLauncher {
       const selectedFolder = localStorage.getItem('selectedFolder');
       if (!selectedFolder) {
         console.warn('⚠️ No folder selected');
-        this.showToast('Please select a folder first', 'warning');
+        this.showWarning('Please select a folder first');
         return;
       }
       
@@ -161,7 +445,7 @@ class GameLauncher {
       
       const selectedFolder = localStorage.getItem('selectedFolder');
       if (!selectedFolder) {
-        this.showToast('Please select a folder first', 'warning');
+        this.showWarning('Please select a folder first');
         return;
       }
       
@@ -170,45 +454,42 @@ class GameLauncher {
 
     // Configurar botón de juego
     btnPlay.addEventListener('click', async () => {
-      if (this.isDownloading || this.isRepairing) {
-        logger.warn('Operation in progress, cannot launch game');
-        this.showToast('Please wait for current operation to complete', 'warning');
+      if (!this.canExecuteOperation('play')) {
         return;
       }
       
       const selectedFolder = localStorage.getItem('selectedFolder');
       if (!selectedFolder) {
-        this.showToast('Please select a folder first', 'warning');
+        this.showWarning('Please select a folder first');
         return;
       }
       
-      // Validar archivos críticos antes de iniciar el juego
+      // Validar estructura del cliente L2 antes de iniciar el juego
       try {
-        logger.info('Validating game files before launch');
-        const gameReady = await fileValidator.isGameReadyToLaunch(selectedFolder);
+        logger.info('Validating L2 client structure before launch');
         
-        if (!gameReady.ready) {
-          logger.warn('Game not ready to launch', gameReady);
-          this.showToast(`Game not ready: ${gameReady.reason}`, 'error');
+        // Usar la nueva función de validación
+        if (window.electron && window.electron.isValidL2Folder) {
+          const l2Validation = await window.electron.isValidL2Folder(selectedFolder);
           
-          // Mostrar detalles de archivos faltantes/corruptos
-          if (gameReady.details) {
-            const missingFiles = gameReady.details.missingFiles || [];
-            const corruptedFiles = gameReady.details.corruptedFiles || [];
-            
-            if (missingFiles.length > 0) {
-              this.showToast(`Missing files: ${missingFiles.join(', ')}`, 'warning');
-            }
-            if (corruptedFiles.length > 0) {
-              this.showToast(`Corrupted files: ${corruptedFiles.join(', ')}`, 'warning');
-            }
+          if (!l2Validation.isValid) {
+            logger.warn('Invalid L2 client structure', l2Validation);
+            this.showError(l2Validation.reason || 'Please select a valid L2 client folder');
+            return;
           }
+        } else {
+          // Fallback al validator anterior
+          const l2Validation = await l2ClientValidator.validateL2Client(selectedFolder);
           
-          return;
+          if (!l2Validation.isValid) {
+            logger.warn('Invalid L2 client structure', l2Validation);
+            this.showError('Please select a valid L2 client folder');
+            return;
+          }
         }
         
-        logger.info('Game validated successfully, launching...');
-        this.showToast('Launching game...', 'info');
+        logger.info('L2 client validated successfully, launching...');
+        // this.showInfo('Launching game...');
         
         // Lanzar el juego
         if (window.electron) {
@@ -217,12 +498,47 @@ class GameLauncher {
         
       } catch (error) {
         logger.error('Error validating game files', { error: error.message });
-        this.showToast('Error validating game files', 'error');
+        // this.showError('Error validating game files');
       }
     });
 
     // Verificar estado inicial del cliente
     this.checkClientStatus();
+  }
+
+  // Método para actualizar el estado del botón Play cuando se selecciona una carpeta
+  async updatePlayButtonState() {
+    try {
+      const selectedFolder = localStorage.getItem('selectedFolder');
+      if (!selectedFolder) return;
+
+      const btnPlay = document.getElementById('btnPlay');
+      if (!btnPlay) return;
+
+      // Verificar si es una carpeta L2 válida
+      let isL2Valid = false;
+      if (window.electron && window.electron.isValidL2Folder) {
+        const l2Validation = await window.electron.isValidL2Folder(selectedFolder);
+        isL2Valid = l2Validation.isValid;
+      } else {
+        // Fallback al validator anterior
+        const l2Validation = await l2ClientValidator.validateL2Client(selectedFolder);
+        isL2Valid = l2Validation.isValid;
+      }
+
+      // Actualizar estado del botón Play
+      if (isL2Valid) {
+        btnPlay.disabled = false;
+        btnPlay.title = 'Launch Lineage 2';
+        logger.info('Play button enabled - valid L2 client folder');
+      } else {
+        btnPlay.disabled = true;
+        btnPlay.title = 'Please select a valid L2 client folder to play';
+        logger.info('Play button disabled - not a valid L2 client folder');
+      }
+    } catch (error) {
+      logger.error('Error updating play button state', { error: error.message });
+    }
   }
 
   async checkClientStatus() {
@@ -232,18 +548,37 @@ class GameLauncher {
 
       logger.info('Checking client status', { folder: selectedFolder });
       
-      const isValid = await fileValidator.validateDirectory(selectedFolder);
-      if (isValid) {
-        const files = await this.patchDownloader.getLocalFiles(selectedFolder);
-        this.isClientReady = files.length > 0;
-        logger.info('Client status: Ready', { fileCount: files.length });
-        
-        // NO llamar automáticamente a checkForUpdates aquí
-        // checkForUpdates() se debe llamar manualmente desde game-panel.html
+      // Verificar si es una carpeta L2 válida para el botón Play
+      let isL2Valid = false;
+      if (window.electron && window.electron.isValidL2Folder) {
+        const l2Validation = await window.electron.isValidL2Folder(selectedFolder);
+        isL2Valid = l2Validation.isValid;
       } else {
-        this.isClientReady = false;
-        logger.warn('Client status: Not ready - invalid directory');
+        // Fallback al validator anterior
+        const l2Validation = await l2ClientValidator.validateL2Client(selectedFolder);
+        isL2Valid = l2Validation.isValid;
       }
+      
+      // Obtener archivos locales (siempre funciona, independientemente de si es L2 válido)
+      const files = await this.patchDownloader.getLocalFiles(selectedFolder);
+      this.isClientReady = files.length > 0;
+      
+      // Controlar el botón Play basado en la validación L2
+      const btnPlay = document.getElementById('btnPlay');
+      if (btnPlay) {
+        if (isL2Valid) {
+          btnPlay.disabled = false;
+          btnPlay.title = 'Launch Lineage 2';
+          logger.info('Client status: Ready for play', { fileCount: files.length });
+        } else {
+          btnPlay.disabled = true;
+          btnPlay.title = 'Please select a valid L2 client folder to play';
+          logger.warn('Client status: Ready for updates, but not for play - invalid L2 client structure');
+        }
+      }
+      
+      // NO llamar automáticamente a checkForUpdates aquí
+      // checkForUpdates() se debe llamar manualmente desde game-panel.html
     } catch (error) {
       logger.error('Error checking client status', { error: error.message });
       this.isClientReady = false;
@@ -266,7 +601,12 @@ class GameLauncher {
 
   async startUpdate(progressFill, progressPercent, progressStatus, progressDetails, btnUpdate, btnPlay) {
     try {
-      this.isDownloading = true;
+      // Validar si se puede ejecutar update
+      if (!this.canExecuteOperation('update')) {
+        return;
+      }
+
+      this.setOperationState('update', true);
       btnUpdate.disabled = true;
       btnPlay.disabled = true;
 
@@ -312,6 +652,20 @@ class GameLauncher {
       progressFill.style.width = '20%';
       progressPercent.textContent = '20%';
 
+      // Limpiar archivos temporales incompletos antes de verificar
+      await this.cleanupIncompleteFiles();
+
+      // Validar integridad de archivos locales
+      progressStatus.textContent = 'Validating local files...';
+      progressFill.style.width = '25%';
+      progressPercent.textContent = '25%';
+      
+      const integrityCheck = await this.validateLocalFilesIntegrity();
+      if (!integrityCheck.valid) {
+        // this.showWarning(`File integrity check failed: ${integrityCheck.reason}`);
+        logger.warn('File integrity check failed', { reason: integrityCheck.reason });
+      }
+
       // Obtener archivos locales
       const localFiles = await this.patchDownloader.getLocalFiles(selectedFolder);
 
@@ -331,11 +685,15 @@ class GameLauncher {
         // Ocultar detalles del progreso cuando no hay descarga
         progressDetails.style.display = 'none';
         
-        this.showToast('All files are up to date ✓', 'success');
+        this.showSuccess('All files are up to date ✓');
+        
+
         return;
       }
 
       console.log(`📦 Found ${filesToUpdate.length} files to update`);
+
+
 
       // Mostrar progreso de preparación
       progressStatus.textContent = `Preparing to install ${filesToUpdate.length} files...`;
@@ -353,6 +711,8 @@ class GameLauncher {
       // Usar el patchDownloader para el proceso completo de descarga e instalación
       console.log('🚀 Starting download and extraction process...');
       
+
+      
       await this.patchDownloader.downloadAndExtractAllFiles(
         selectedFolder,
         (progressData) => {
@@ -363,6 +723,9 @@ class GameLauncher {
           const currentFile = progressData.currentFile || 'Unknown';
           const currentPhase = progressData.currentPhase || 'download';
           const speed = progressData.speed || 0;
+          
+          // Actualizar notificación del system tray
+          this.updateTrayNotification('update', progress);
           const downloaded = progressData.downloaded || 0;
           const elapsed = progressData.elapsed || 0;
           
@@ -435,12 +798,14 @@ class GameLauncher {
             }, 2000);
           }
           
-          this.showToast('Installation completed successfully ✓', 'success');
+
+          
+          // this.showSuccess('Installation completed successfully ✓');
         },
         (error) => {
           // Error en instalación
           console.error('❌ Installation failed:', error);
-          this.showToast(`Installation failed: ${error}`, 'error');
+          // this.showError(`Installation failed: ${error}`);
           progressStatus.textContent = `Installation failed: ${error}`;
         }
       );
@@ -448,14 +813,22 @@ class GameLauncher {
       // Guardar estado de actualización
       await this.patchDownloader.saveUpdateState(serverFiles);
 
+
+
       console.log('✅ Update process completed successfully');
 
     } catch (error) {
       console.error('❌ Update process failed:', error);
-      this.showToast(`Update failed: ${error.message}`, 'error');
-      progressStatus.textContent = `Update failed: ${error.message}`;
+      
+      if (error.message === 'Download cancelled by user') {
+        progressStatus.textContent = 'Update cancelled';
+        this.showInfo('Update cancelled by user');
+      } else {
+        this.handleOperationError('update', error);
+        progressStatus.textContent = `Update failed: ${error.message}`;
+      }
     } finally {
-      this.isDownloading = false;
+      this.setOperationState('update', false);
       btnUpdate.disabled = false;
       btnPlay.disabled = false;
     }
@@ -463,7 +836,12 @@ class GameLauncher {
 
   async startRepair(progressFill, progressPercent, progressStatus, progressDetails, btnRepair) {
     try {
-      this.isRepairing = true;
+      // Validar si se puede ejecutar repair
+      if (!this.canExecuteOperation('repair')) {
+        return;
+      }
+
+      this.setOperationState('repair', true);
       btnRepair.disabled = true;
 
       const selectedFolder = localStorage.getItem('selectedFolder');
@@ -516,6 +894,9 @@ class GameLauncher {
           // Actualizar información detallada
           this.updateProgressDetails(timerId, repairProgress, 'repair', progressData.currentFile);
           
+          // Actualizar notificación del system tray
+          this.updateTrayNotification('repair', repairProgress);
+          
           // Actualizar timer con información de velocidad
           if (progressData.speed && progressData.downloaded) {
             timerManager.updateProgress(timerId, progressData.downloaded, progressData.speed);
@@ -540,20 +921,27 @@ class GameLauncher {
         // Actualizar información detallada con progreso 100%
         this.updateProgressDetails(timerId, 100, 'repair', 'Completed');
         
-        this.showToast(result.message, 'success');
+        // Mostrar toast específico para repair
+        if (result.repairedCount > 0) {
+          this.showSuccess(`Repair completed! ${result.repairedCount} files repaired ✓`);
+        } else {
+          this.showInfo('No files needed repair ✓');
+        }
+        
+
       } else {
         console.log('❌ Repair falló:', result.message);
-        this.showToast(`Repair failed: ${result.message}`, 'error');
+        // this.showError(`Repair failed: ${result.message}`);
         progressStatus.textContent = `Repair failed: ${result.message}`;
       }
 
     } catch (error) {
       console.error('❌ Error en repair:', error);
       logger.error('Repair process failed', { error: error.message });
-      this.showToast(`Repair failed: ${error.message}`, 'error');
+      this.handleOperationError('repair', error);
       progressStatus.textContent = `Repair failed: ${error.message}`;
     } finally {
-      this.isRepairing = false;
+      this.setOperationState('repair', false);
       btnRepair.disabled = false;
     }
   }
@@ -580,6 +968,21 @@ class GameLauncher {
       throw error;
     }
   }
+
+  // Control de descarga
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   // Cargar rankings usando el rankingService
   async loadRankings() {
@@ -801,6 +1204,8 @@ class GameLauncher {
       console.log('📊 Detalles ocultos');
     }
   }
+
+
 }
 
 // Función de inicialización global

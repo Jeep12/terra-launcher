@@ -53,6 +53,22 @@ contextBridge.exposeInMainWorld('electron', {
   },
   // Función para abrir enlaces externos
                 openExternalLink: (url) => ipcRenderer.invoke('open-external-link', url),
-              getUserDataPath: () => ipcRenderer.invoke('get-user-data-path')
+              getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+  
+  // Funciones de system tray
+  onWindowClose: (callback) => ipcRenderer.on('window-close-request', callback),
+  minimizeToTray: () => ipcRenderer.send('minimize-to-tray'),
+  restoreFromTray: () => ipcRenderer.send('restore-from-tray'),
+  showTrayNotification: (title, message, type) => ipcRenderer.send('show-tray-notification', { title, message, type }),
+  closeApp: () => ipcRenderer.send('close-app'),
+  
+  // Funciones de limpieza y validación
+  cleanupIncompleteFiles: (folderPath, patterns) => ipcRenderer.invoke('cleanup-incomplete-files', folderPath, patterns),
+  validateFileIntegrity: (folderPath) => ipcRenderer.invoke('validate-file-integrity', folderPath),
+  
+  // Funciones para validación de cliente L2
+  pathExists: (path) => ipcRenderer.invoke('path-exists', path),
+  readDirectory: (folderPath) => ipcRenderer.invoke('read-directory', folderPath),
+  isValidL2Folder: (folderPath) => ipcRenderer.invoke('is-valid-l2-folder', folderPath)
 });
 
